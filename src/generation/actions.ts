@@ -12,9 +12,8 @@ import {
   encodeCredentials,
   parseCredentialInput,
 } from "./credentials";
-import { createPlatformClient } from "./platform";
 import type { StatusResult } from "./platform";
-import { toPlatform } from "./to-platform";
+import { createLegacyPlatformProvider } from "./providers/legacy-platform";
 
 export async function savePlatformCredentials(data: unknown) {
   const { apiKey } = parseCredentialInput(data);
@@ -37,8 +36,8 @@ export async function submitGeneration(plane: GenerationPlane) {
     ...plane,
     settings: parseSettings(model, plane.settings),
   };
-  const { path, body } = toPlatform(parsed);
-  return createPlatformClient(await readCredentials()).submit(path, body);
+  const provider = createLegacyPlatformProvider(await readCredentials());
+  return provider.submit({ model, plane: parsed });
 }
 
 /** Every request in flight, answered in one round trip. Next dispatches server
@@ -47,11 +46,11 @@ export async function submitGeneration(plane: GenerationPlane) {
     genuinely parallel. */
 export async function getGenerationStatuses(data: unknown): Promise<StatusResult[]> {
   const requestIds = parseRequestIds(data);
-  const client = createPlatformClient(await readCredentials());
+  const provider = createLegacyPlatformProvider(await readCredentials());
   return Promise.all(
     requestIds.map(async (requestId): Promise<StatusResult> => {
       try {
-        return { requestId, status: await client.status(requestId) };
+        return { requestId, status: await provider.status(requestId) };
       } catch (caught) {
         return { requestId, error: caught instanceof Error ? caught.message : String(caught) };
       }
