@@ -205,6 +205,7 @@ export function AssetPicker({
 
   return (
     <div className="ohf-popover ohf-popover--assets" role="dialog" aria-label="Add input">
+      <p style={{ padding: "12px 16px 0", fontSize: 12 }}>Uploads use public media URLs for generation providers. Don’t upload confidential material. Maximum file size: 100 MB.</p>
       <div className="ohf-assets-head">
         <div
           className="ohf-assets-tabs"

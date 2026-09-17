@@ -15,6 +15,8 @@ export type ModelRoute = {
   score: number;
   renderAspectRatio: AspectRatio;
   requiresCrop: boolean;
+  renderDurationSeconds: number;
+  requiresTrim: boolean;
   reasons: string[];
 };
 
@@ -22,29 +24,66 @@ export function rankVideoModels(
   request: ModelRoutingRequest,
   models: readonly ModelEntry[] = MODELS,
 ): ModelRoute[] {
+  if (
+    !Number.isFinite(request.shotDurationSeconds) ||
+    request.shotDurationSeconds <= 0
+  )
+    return [];
   return models
     .flatMap((model) => {
       const route = scoreModel(model, request);
       return route ? [route] : [];
     })
-    .sort((left, right) => right.score - left.score || left.modelLabel.localeCompare(right.modelLabel));
+    .sort(
+      (left, right) =>
+        right.score - left.score ||
+        left.modelLabel.localeCompare(right.modelLabel),
+    );
 }
 
-function scoreModel(model: ModelEntry, request: ModelRoutingRequest): ModelRoute | null {
+function scoreModel(
+  model: ModelEntry,
+  request: ModelRoutingRequest,
+): ModelRoute | null {
   if (model.surface !== "video") return null;
 
   const ratio = chooseRatio(model, request.target.aspectRatio);
   if (!ratio) return null;
 
   const duration = model.settings.duration;
+  // Unknown duration and source-video-only entries are not executable text shots.
+  const customTextModels = new Set([
+    "seedance-2",
+    "seedance-2-fast",
+    "seedance-2-mini",
+    "seedance-2.5",
+    "kling-3-turbo",
+    "kling-3-std",
+    "kling-3-pro",
+    "kling-3-4k",
+  ]);
   if (
-    duration?.type === "range" &&
-    (request.shotDurationSeconds < duration.min || request.shotDurationSeconds > duration.max)
-  ) {
+    duration?.type !== "range" ||
+    !(model.paths?.text || customTextModels.has(model.id))
+  )
     return null;
-  }
+  const step = duration.step ?? 1;
+  const renderDurationSeconds =
+    Math.round(
+      (duration.min +
+        Math.ceil(
+          Math.max(0, request.shotDurationSeconds - duration.min) / step - 1e-8,
+        ) *
+          step) *
+        1000,
+    ) / 1000;
+  if (renderDurationSeconds > duration.max) return null;
+  const requiresTrim =
+    renderDurationSeconds - request.shotDurationSeconds > 0.01;
 
-  const hasNativeAudio = Boolean(model.settings.generateAudio || model.settings.sound);
+  const hasNativeAudio = Boolean(
+    model.settings.generateAudio || model.settings.sound,
+  );
   if (request.requireNativeAudio && !hasNativeAudio) return null;
 
   let score = 50;
@@ -55,12 +94,18 @@ function scoreModel(model: ModelEntry, request: ModelRoutingRequest): ModelRoute
     reasons.push("native target aspect ratio");
   } else {
     score += 8;
-    reasons.push(`generate ${ratio.renderAspectRatio}, then crop to ${request.target.aspectRatio}`);
+    reasons.push(
+      `generate ${ratio.renderAspectRatio}, then crop to ${request.target.aspectRatio}`,
+    );
   }
 
   if (duration?.type === "range") {
     score += 10;
-    reasons.push("supports the shot duration");
+    reasons.push(
+      requiresTrim
+        ? `generate ${renderDurationSeconds}s, then trim`
+        : "supports the shot duration",
+    );
   }
 
   if (hasNativeAudio) {
@@ -84,6 +129,8 @@ function scoreModel(model: ModelEntry, request: ModelRoutingRequest): ModelRoute
     score,
     renderAspectRatio: ratio.renderAspectRatio,
     requiresCrop: ratio.requiresCrop,
+    renderDurationSeconds,
+    requiresTrim,
     reasons,
   };
 }

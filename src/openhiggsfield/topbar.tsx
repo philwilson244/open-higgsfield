@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import Link from "next/link";
 
 import { VIEWS, VIEW_LABELS, type GalleryView } from "./data";
 import { AssetsIcon, HeartIcon, ImageIcon, KeyIcon, VideoIcon } from "./icons";
@@ -124,6 +125,7 @@ export function Topbar({
           whether one is held and opens the modal that sets it — and its lamp is
           the studio's liveness, the one place accent moves. */}
       <div className="ohf-bar ohf-enter-1">
+        <Link href="/ads" className="ohf-key" style={{ textDecoration: "none" }}>Ad Studio ↗</Link>
         <button
           type="button"
           className="ohf-key"

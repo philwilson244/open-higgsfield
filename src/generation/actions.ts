@@ -1,89 +1,131 @@
 "use server";
 
 import { cookies } from "next/headers";
-
+import { z } from "zod";
+import { requireAccount } from "@/lib/supabase/server";
+import { databaseConfigured } from "@/lib/supabase/config";
+import { encryptSecret, decryptSecret } from "@/lib/secrets";
 import { getModel, parseSettings } from "./catalog";
 import type { GenerationPlane } from "./catalog/types";
-import {
-  MissingCredentialsError,
-  PLATFORM_KEY_COOKIE,
-  PLATFORM_KEY_COOKIE_OPTIONS,
-  decodeCredentials,
-  encodeCredentials,
-  parseCredentialInput,
-} from "./credentials";
+import { MissingCredentialsError, parseCredentialInput } from "./credentials";
 import type { StatusResult } from "./platform";
 import { createLegacyPlatformProvider } from "./providers/legacy-platform";
 
+const providerId = "higgsfield-platform";
 export async function savePlatformCredentials(data: unknown) {
   const { apiKey } = parseCredentialInput(data);
-  const jar = await cookies();
-  jar.set(PLATFORM_KEY_COOKIE, encodeCredentials(apiKey), PLATFORM_KEY_COOKIE_OPTIONS);
+  if (apiKey.length > 4096) throw new Error("API key is too long");
+  const { db, user } = await requireAccount();
+  const encrypted_key = encryptSecret(apiKey, `${user.id}:${providerId}`);
+  const { error } = await db
+    .from("ad_provider_accounts")
+    .upsert(
+      { owner_id: user.id, provider: providerId, encrypted_key },
+      { onConflict: "owner_id,provider" },
+    );
+  if (error) throw new Error("Could not save provider credentials");
+  (await cookies()).set("api_key", "", { path: "/", maxAge: 0 });
 }
-
 export async function clearPlatformCredentials() {
-  const jar = await cookies();
-  jar.set(PLATFORM_KEY_COOKIE, "", { ...PLATFORM_KEY_COOKIE_OPTIONS, maxAge: 0 });
+  const { db, user } = await requireAccount();
+  const { error } = await db
+    .from("ad_provider_accounts")
+    .delete()
+    .eq("owner_id", user.id)
+    .eq("provider", providerId);
+  if (error) throw new Error("Could not remove provider credentials");
+  (await cookies()).set("api_key", "", { path: "/", maxAge: 0 });
 }
-
 export async function hasPlatformCredentials() {
-  return (await readStoredCredentials()) !== null;
+  if (!databaseConfigured()) return false;
+  try {
+    const { db, user } = await requireAccount();
+    const { data, error } = await db
+      .from("ad_provider_accounts")
+      .select("provider")
+      .eq("owner_id", user.id)
+      .eq("provider", providerId)
+      .maybeSingle();
+    return !error && Boolean(data);
+  } catch {
+    return false;
+  }
 }
-
-export async function submitGeneration(plane: GenerationPlane) {
+const mediaItem = z.object({
+  id: z.string().max(200),
+  url: z
+    .url()
+    .max(4000)
+    .refine((v) => v.startsWith("https://"), "Media must use HTTPS"),
+  role: z.enum(["start", "end", "reference", "video", "audio"]),
+});
+const planeSchema = z.object({
+  model: z.string().max(100),
+  prompt: z.object({ text: z.string().trim().min(1).max(12000) }),
+  media: z.object({
+    start: z.array(mediaItem).max(20).optional(),
+    end: z.array(mediaItem).max(20).optional(),
+    reference: z.array(mediaItem).max(20).optional(),
+    video: z.array(mediaItem).max(20).optional(),
+    audio: z.array(mediaItem).max(20).optional(),
+  }),
+  settings: z.record(
+    z.string().max(100),
+    z.union([z.string().max(100), z.number().finite(), z.boolean()]),
+  ),
+});
+export async function submitGeneration(input: GenerationPlane) {
+  const credentials = await readCredentials();
+  const plane = planeSchema.parse(input);
   const model = getModel(plane.model);
+  for (const [role, items] of Object.entries(plane.media)) {
+    if (items.length > (model.roles[role as keyof typeof model.roles] ?? 0))
+      throw new Error("Too many media inputs for this model");
+  }
   const parsed: GenerationPlane = {
     ...plane,
     settings: parseSettings(model, plane.settings),
   };
-  const provider = createLegacyPlatformProvider(await readCredentials());
-  return provider.submit({ model, plane: parsed });
+  return createLegacyPlatformProvider(credentials).submit({
+    model,
+    plane: parsed,
+  });
 }
-
-/** Every request in flight, answered in one round trip. Next dispatches server
-    actions one at a time per client, so a poll per run would queue ahead of the
-    next submit — the fan-out belongs on this side of the call, where it is
-    genuinely parallel. */
-export async function getGenerationStatuses(data: unknown): Promise<StatusResult[]> {
-  const requestIds = parseRequestIds(data);
+export async function getGenerationStatuses(
+  data: unknown,
+): Promise<StatusResult[]> {
+  const { requestIds } = z
+    .object({ requestIds: z.array(z.string().min(1).max(200)).min(1).max(60) })
+    .parse(data);
   const provider = createLegacyPlatformProvider(await readCredentials());
   return Promise.all(
-    requestIds.map(async (requestId): Promise<StatusResult> => {
+    [...new Set(requestIds)].map(async (requestId): Promise<StatusResult> => {
       try {
         return { requestId, status: await provider.status(requestId) };
-      } catch (caught) {
-        return { requestId, error: caught instanceof Error ? caught.message : String(caught) };
+      } catch {
+        return {
+          requestId,
+          error: "Unable to read generation status. Please try again.",
+        };
       }
     }),
   );
 }
-
-async function readStoredCredentials() {
-  const jar = await cookies();
-  return decodeCredentials(jar.get(PLATFORM_KEY_COOKIE)?.value);
-}
-
 async function readCredentials() {
-  const stored = await readStoredCredentials();
-  if (!stored) throw new MissingCredentialsError();
+  const { db, user } = await requireAccount();
+  const { data, error } = await db
+    .from("ad_provider_accounts")
+    .select("encrypted_key")
+    .eq("owner_id", user.id)
+    .eq("provider", providerId)
+    .maybeSingle();
+  if (error) throw new Error("Provider account is unavailable");
+  if (!data) throw new MissingCredentialsError();
   const baseUrl = process.env.HF_API_BASE_URL;
-  if (!baseUrl) throw new Error("Missing HF_API_BASE_URL");
-  return { ...stored, baseUrl };
-}
-
-function parseRequestIds(data: unknown): string[] {
-  const payload = asObject(data, "Invalid status payload");
-  const requestIds = payload.requestIds;
-  if (!Array.isArray(requestIds) || requestIds.length === 0) {
-    throw new Error("Invalid request ids");
-  }
-  return requestIds.map((requestId) => {
-    if (typeof requestId !== "string" || !requestId) throw new Error("Invalid request id");
-    return requestId;
-  });
-}
-
-function asObject(data: unknown, message: string): Record<string, unknown> {
-  if (data === null || typeof data !== "object" || Array.isArray(data)) throw new Error(message);
-  return data as Record<string, unknown>;
+  if (!baseUrl || new URL(baseUrl).protocol !== "https:")
+    throw new Error("A secure provider API URL must be configured");
+  return {
+    apiKey: decryptSecret(data.encrypted_key, `${user.id}:${providerId}`),
+    baseUrl,
+  };
 }

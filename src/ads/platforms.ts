@@ -1,5 +1,7 @@
 import type { AdChannel, AdTarget } from "./types";
 
+// Editorial defaults, not platform acceptance limits. Safe zones are conservative
+// composition guides and must be checked in each placement's current preview.
 export const AD_TARGETS: Record<AdChannel, AdTarget> = {
   youtube_shorts: {
     channel: "youtube_shorts",
