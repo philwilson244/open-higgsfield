@@ -73,9 +73,10 @@ export function KeyModal({
             </div>
             <p className="ohf-keys-copy">
               {configured
-                ? "A key is saved in this browser. Enter a new id:secret pair to replace it."
-                : "Paste your platform key as id:secret. It stays in an httpOnly cookie and is sent as Authorization: Key id:secret."}
+                ? "A key is encrypted in your account. Enter a new id:secret pair to replace it."
+                : "Sign in through Ad Studio, then save your platform key as id:secret. It is encrypted and stored server-side. Old browser keys must be re-entered."}
             </p>
+            <a href="/ads/login">Account sign-in</a>
           </div>
           <button type="button" className="ohf-icon-btn" aria-label="Close" onClick={onClose}>
             <CloseIcon size={13} />

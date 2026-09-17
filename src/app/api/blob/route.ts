@@ -1,83 +1,84 @@
 import { handleUpload, type HandleUploadBody } from "@vercel/blob/client";
-import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
-
-import {
-  DEVICE_COOKIE,
-  DEVICE_COOKIE_OPTIONS,
-  blobPathname,
-  resolveDeviceId,
-} from "@/generation/device";
-
-// Anyone who can hit this route can upload. Gate it when auth exists.
+import { requireAccount } from "@/lib/supabase/server";
+import { blobPathname } from "@/generation/device";
 
 export async function POST(request: Request): Promise<NextResponse> {
-  const incoming = (await request.json()) as HandleUploadBody;
-  const device =
-    incoming.type === "blob.generate-client-token" ? await readDeviceId() : null;
-  const body = device ? withDevicePath(incoming, device.deviceId) : incoming;
-  console.info("[blob] upload", summarizeBlobEvent(body));
-
+  let body: HandleUploadBody;
+  try {
+    body = await request.json();
+  } catch {
+    return NextResponse.json(
+      { error: "Invalid upload request" },
+      { status: 400 },
+    );
+  }
+  if (
+    !body ||
+    !["blob.generate-client-token", "blob.upload-completed"].includes(body.type)
+  )
+    return NextResponse.json(
+      { error: "Invalid upload event" },
+      { status: 400 },
+    );
+  if (body.type === "blob.generate-client-token") {
+    try {
+      const { user } = await requireAccount();
+      if (!body.payload || typeof body.payload.pathname !== "string")
+        return NextResponse.json(
+          { error: "Missing file name" },
+          { status: 400 },
+        );
+      body = {
+        ...body,
+        payload: {
+          ...body.payload,
+          pathname: blobPathname(user.id, body.payload.pathname),
+        },
+      };
+    } catch {
+      return NextResponse.json(
+        { error: "Sign in at /ads/login to upload" },
+        { status: 401 },
+      );
+    }
+  }
+  // Completion callbacks have no browser session; handleUpload verifies their signature.
   try {
     const token = process.env.OPEN_HIGGSFIELD_READ_WRITE_TOKEN;
-    if (!token) throw new Error("Missing OPEN_HIGGSFIELD_READ_WRITE_TOKEN");
-    const json = await handleUpload({
+    if (!token)
+      return NextResponse.json(
+        { error: "Media storage is not configured" },
+        { status: 503 },
+      );
+    const result = await handleUpload({
       body,
       request,
       token,
-      onBeforeGenerateToken: async (pathname) => {
-        console.info("[blob] token", { pathname });
-        return {
-          allowedContentTypes: [
-            "image/jpeg",
-            "image/png",
-            "image/webp",
-            "image/gif",
-            "video/mp4",
-            "audio/wav",
-            "audio/x-wav",
-          ],
-          addRandomSuffix: true,
-        };
-      },
+      onBeforeGenerateToken: async () => ({
+        allowedContentTypes: [
+          "image/jpeg",
+          "image/png",
+          "image/webp",
+          "image/gif",
+          "video/mp4",
+          "audio/wav",
+          "audio/x-wav",
+        ],
+        maximumSizeInBytes: 100 * 1024 * 1024,
+        addRandomSuffix: true,
+      }),
     });
-    return withDeviceCookie(
-      json.type === "blob.generate-client-token" && body.type === "blob.generate-client-token"
-        ? NextResponse.json({ ...json, pathname: body.payload.pathname })
-        : NextResponse.json(json),
-      device,
+    return NextResponse.json(
+      result.type === "blob.generate-client-token" &&
+        body.type === "blob.generate-client-token"
+        ? { ...result, pathname: body.payload.pathname }
+        : result,
     );
-  } catch (error) {
-    console.error("[blob] upload failed", error instanceof Error ? error.message : error);
-    if (device?.minted) return withDeviceCookie(new NextResponse(null, { status: 500 }), device);
-    throw error;
+  } catch {
+    return NextResponse.json(
+      { error: "Upload could not be authorized" },
+      { status: 400 },
+    );
   }
-}
-
-async function readDeviceId() {
-  const jar = await cookies();
-  return resolveDeviceId(jar.get(DEVICE_COOKIE)?.value);
-}
-
-function withDeviceCookie(
-  response: NextResponse,
-  device: { deviceId: string; minted: boolean } | null,
-) {
-  if (device?.minted) response.cookies.set(DEVICE_COOKIE, device.deviceId, DEVICE_COOKIE_OPTIONS);
-  return response;
-}
-
-function withDevicePath(body: HandleUploadBody, deviceId: string): HandleUploadBody {
-  if (body.type !== "blob.generate-client-token") return body;
-  return {
-    ...body,
-    payload: { ...body.payload, pathname: blobPathname(deviceId, body.payload.pathname) },
-  };
-}
-
-function summarizeBlobEvent(body: HandleUploadBody) {
-  if (body.type === "blob.generate-client-token") {
-    return { type: body.type, pathname: body.payload.pathname };
-  }
-  return { type: body.type, url: body.payload.blob.url };
 }

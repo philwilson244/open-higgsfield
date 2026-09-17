@@ -1,5 +1,19 @@
 # OpenHiggsfield AI — Open-Source Alternative to Higgsfield AI
 
+## Ad Studio development branch
+
+The new campaign workspace is at `/ads`. It includes editable concepts and
+storyboards, saved brand templates and campaigns through Supabase, owner-only
+access, and encrypted provider-key storage. The planner currently uses templates;
+finished-video assembly and additional provider integrations are not built yet.
+
+See [Ad Studio setup and verification](docs/AD_STUDIO_SETUP.md) before deploying.
+**The upstream instructions below describe the original browser-only app.** Keys
+are no longer stored in cookies. Generation and uploads now require an account;
+without database configuration, Ad Studio is an explicitly unsaved preview.
+
+---
+
 > **The free, open-source alternative to Higgsfield AI.** Generate images and
 > videos with 38 models from one prompt bar — no closed ecosystem, no studio
 > subscription.

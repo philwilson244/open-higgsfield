@@ -1,34 +1,7 @@
-export const PLATFORM_KEY_COOKIE = "api_key";
-
-export const PLATFORM_KEY_COOKIE_OPTIONS = {
-  httpOnly: true,
-  secure: process.env.NODE_ENV === "production",
-  sameSite: "lax" as const,
-  path: "/",
-  maxAge: 60 * 60 * 24 * 30,
-};
-
 export class MissingCredentialsError extends Error {
   constructor() {
     super("Missing platform key");
     this.name = "MissingCredentialsError";
-  }
-}
-
-export function encodeCredentials(apiKey: string): string {
-  return JSON.stringify({ apiKey });
-}
-
-export function decodeCredentials(raw: string | undefined): { apiKey: string } | null {
-  if (!raw) return null;
-  try {
-    const parsed = JSON.parse(raw) as unknown;
-    if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) return null;
-    const apiKey = (parsed as { apiKey?: unknown }).apiKey;
-    if (typeof apiKey !== "string" || !apiKey.trim()) return null;
-    return { apiKey: requireIdAndSecret(apiKey.trim()) };
-  } catch {
-    return null;
   }
 }
 
