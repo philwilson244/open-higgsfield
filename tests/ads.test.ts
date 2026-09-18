@@ -16,6 +16,9 @@ import {
 } from "../src/ads/storyboard";
 import { encryptSecret, decryptSecret } from "../src/lib/secrets";
 import { createPlatformClient } from "../src/generation/platform";
+import { createRunwayClient, estimateRunwayVideoCents, runwayRatio } from "../src/generation/providers/runway";
+import { parseMetricsCsv } from "../src/ads/analytics";
+import { COMPANY_TEMPLATES } from "../src/ads/company-templates";
 import type { ModelEntry } from "../src/generation/catalog/types";
 
 const brief = briefSchema.parse({
@@ -213,4 +216,34 @@ test("provider requests keep upstream contract with timeout and no redirect forw
     (await client.submit("model", { prompt: "test" })).requestId,
     "job-123",
   );
+});
+test("Runway adapter uses the versioned API contract and current credit estimate", async () => {
+  const client = createRunwayClient("runway-secret", (async (url, init) => {
+    assert.equal(url, "https://api.dev.runwayml.com/v1/text_to_video");
+    assert.equal(init?.method, "POST");
+    assert.equal(new Headers(init?.headers).get("Authorization"), "Bearer runway-secret");
+    assert.equal(new Headers(init?.headers).get("X-Runway-Version"), "2024-11-06");
+    assert.deepEqual(JSON.parse(String(init?.body)), {
+      model: "gen4.5", promptText: "A clean product reveal", ratio: "720:1280", duration: 5,
+    });
+    return Response.json({ id: "runway-task" });
+  }) as typeof fetch);
+  assert.equal((await client.submitTextVideo({
+    model: "gen4.5", promptText: "A clean product reveal", ratio: "720:1280", duration: 5,
+  })).id, "runway-task");
+  assert.equal(estimateRunwayVideoCents("gen4.5", 5, 2), 120);
+  assert.equal(runwayRatio("16:9"), "1280:720");
+});
+test("analytics CSV parsing normalizes money and produces bounded creative scores", () => {
+  const [row] = parseMetricsCsv([
+    "creative_id,platform,date,spend,impressions,three_second_views,completions,clicks,conversions,revenue",
+    "launch-a,youtube,2026-09-18,25.50,10000,5000,2000,400,20,100.00",
+  ].join("\n"));
+  assert.equal(row?.spendCents, 2550);
+  assert.equal(row?.revenueCents, 10000);
+  assert.ok((row?.score ?? -1) >= 0 && (row?.score ?? 101) <= 100);
+});
+test("company templates are complete valid brand kits", () => {
+  assert.deepEqual(COMPANY_TEMPLATES.map((item) => item.label), ["Fullcourt", "Pocket OS.AI", "PWS"]);
+  for (const template of COMPANY_TEMPLATES) assert.ok(brandSchema.safeParse(template.kit).success);
 });

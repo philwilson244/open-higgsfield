@@ -1,0 +1,20 @@
+revoke all on function public.claim_ad_generation_job() from public, anon, authenticated;
+revoke all on function public.claim_ad_render_job() from public, anon, authenticated;
+revoke all on function public.finish_ad_generation_job(uuid,text,integer,text) from public, anon, authenticated;
+grant execute on function public.claim_ad_generation_job() to service_role;
+grant execute on function public.claim_ad_render_job() to service_role;
+grant execute on function public.finish_ad_generation_job(uuid,text,integer,text) to service_role;
+
+create index if not exists ad_shots_owner on public.ad_shots(owner_id);
+create index if not exists ad_generation_jobs_owner on public.ad_generation_jobs(owner_id);
+create index if not exists ad_generation_jobs_campaign on public.ad_generation_jobs(campaign_id);
+create index if not exists ad_generation_outputs_owner on public.ad_generation_outputs(owner_id);
+create index if not exists ad_assets_owner on public.ad_assets(owner_id);
+create index if not exists ad_assets_brand on public.ad_assets(brand_id);
+create index if not exists ad_assets_output on public.ad_assets(output_id);
+create index if not exists ad_render_jobs_owner on public.ad_render_jobs(owner_id);
+create index if not exists ad_render_jobs_campaign on public.ad_render_jobs(campaign_id);
+create index if not exists ad_usage_events_owner on public.ad_usage_events(owner_id);
+create index if not exists ad_usage_events_campaign on public.ad_usage_events(campaign_id);
+create index if not exists ad_usage_events_generation_job on public.ad_usage_events(generation_job_id);
+create index if not exists ad_usage_events_render_job on public.ad_usage_events(render_job_id);

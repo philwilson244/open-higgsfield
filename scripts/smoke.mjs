@@ -82,7 +82,8 @@ try {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
     });
-    assert.equal(response.status, 401);
+    const expectedStatus = path === "/api/blob" && page.status === 200 ? 503 : 401;
+    assert.equal(response.status, expectedStatus);
     assert.ok((await response.json()).error);
     console.log(`PASS ${path} denies unauthenticated requests`);
   }

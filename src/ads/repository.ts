@@ -11,6 +11,10 @@ export type Campaign = {
   revision: number;
   updated_at: string;
   plan: AdPlan;
+  budget_cents: number;
+  reserved_cents: number;
+  spent_cents: number;
+  production_approved_at: string | null;
 };
 export async function loadWorkspace() {
   const { db, user } = await requireAccount();
@@ -23,7 +27,7 @@ export async function loadWorkspace() {
       .limit(100),
     db
       .from("ad_campaigns")
-      .select("id, name, status, revision, updated_at, plan")
+      .select("id, name, status, revision, updated_at, plan, budget_cents, reserved_cents, spent_cents, production_approved_at")
       .eq("owner_id", user.id)
       .order("updated_at", { ascending: false })
       .limit(100),

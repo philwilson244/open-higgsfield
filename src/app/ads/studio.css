@@ -245,6 +245,15 @@
   grid-template-columns: 1fr 1fr;
   gap: 20px;
 }
+.ads-company-presets {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+.ads-company-presets button {
+  text-align: left;
+  min-height: 52px;
+}
 .ads-card-heading {
   display: flex;
   justify-content: space-between;
@@ -417,6 +426,103 @@
   color: var(--muted);
   font-size: 11px;
 }
+.ads-production-shot {
+  border-top: 1px solid #37383d;
+  margin-top: 18px;
+  padding-top: 18px;
+}
+.ads-production-shot .ads-card-heading > div {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.ads-candidate-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px;
+  margin-top: 14px;
+}
+.ads-candidate-grid article {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  border: 1px solid #37383d;
+  border-radius: 10px;
+  padding: 8px;
+}
+.ads-candidate-grid article.is-selected {
+  border-color: var(--accent);
+  background: #202516;
+}
+.ads-candidate-grid video,
+.ads-media-library video {
+  display: block;
+  width: 100%;
+  max-height: 360px;
+  border-radius: 7px;
+  background: #090909;
+}
+.ads-production-library,
+.ads-analytics {
+  margin-top: 22px;
+}
+.ads-media-library {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 12px;
+  margin-top: 16px;
+}
+.ads-media-library a,
+.ads-media-library span {
+  display: grid;
+  place-items: center;
+  min-height: 84px;
+  border: 1px solid #45493a;
+  border-radius: 8px;
+  color: var(--accent);
+  padding: 12px;
+  text-align: center;
+}
+.ads-file-button {
+  display: inline-flex !important;
+  align-items: center;
+  justify-content: center;
+  background: #202124;
+  border: 1px solid #3a3b40;
+  border-radius: 8px;
+  padding: 9px 14px;
+  cursor: pointer;
+}
+.ads-file-button input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+}
+.ads-metrics-table {
+  overflow-x: auto;
+  margin-top: 16px;
+}
+.ads-metrics-table > div {
+  display: grid;
+  grid-template-columns: minmax(140px, 1.5fr) repeat(4, minmax(110px, 1fr));
+  gap: 12px;
+  padding: 10px 0;
+  border-top: 1px solid #303137;
+  min-width: 700px;
+  font-size: 12px;
+}
+.ads-budget {
+  flex: 0 1 170px;
+}
+.ads-warning {
+  color: #ffbd8d;
+  background: #2c1c15;
+  border: 1px solid #62402e;
+  border-radius: 8px;
+  padding: 10px 12px;
+  margin-top: 12px !important;
+}
 .ads-shell details {
   border-top: 1px solid #37383d;
   padding-top: 12px;
@@ -545,6 +651,9 @@
   .ads-grid {
     grid-template-columns: 1fr;
     gap: 16px;
+  }
+  .ads-company-presets {
+    grid-template-columns: 1fr;
   }
   .ads-title-row {
     align-items: flex-start;
