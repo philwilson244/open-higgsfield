@@ -7,19 +7,24 @@
     "dev": "next dev --port 3000",
     "build": "next build",
     "start": "next start",
+    "worker": "node --import tsx src/worker/index.ts",
     "brand": "node scripts/build-brand-assets.mjs",
     "test": "node --import tsx --test tests/*.test.ts",
     "typecheck": "tsc --noEmit",
     "test:smoke": "node scripts/smoke.mjs"
   },
   "dependencies": {
+    "@remotion/bundler": "4.0.373",
+    "@remotion/renderer": "4.0.373",
     "@supabase/ssr": "0.12.7",
     "@supabase/supabase-js": "2.116.0",
     "@tanstack/react-virtual": "^3.14.10",
     "next": "^16.0.0",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
+    "remotion": "4.0.373",
     "server-only": "0.0.1",
+    "tsx": "4.23.13",
     "zod": "4.6.5",
     "zustand": "^5.0.15"
   },
@@ -28,7 +33,6 @@
     "@types/node": "^22.10.2",
     "@types/react": "^19.2.0",
     "@types/react-dom": "^19.2.0",
-    "tsx": "4.23.13",
     "typescript": "^5.9.2"
   }
 }

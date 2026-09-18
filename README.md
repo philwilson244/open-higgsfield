@@ -2,10 +2,11 @@
 
 ## Ad Studio development branch
 
-The new campaign workspace is at `/ads`. It includes editable concepts and
-storyboards, saved brand templates and campaigns through Supabase, owner-only
-access, and encrypted provider-key storage. The planner currently uses templates;
-finished-video assembly and additional provider integrations are not built yet.
+The campaign workspace is at `/ads`. It includes editable concepts and
+storyboards, Fullcourt/Pocket/PWS brand kits, persistent campaigns and shot jobs,
+encrypted Runway credentials, candidate review, budget approval gates, a
+campaign media library, Remotion MP4 assembly, and creative analytics imports.
+Paid generation and rendering run asynchronously in a separate Railway worker.
 
 See [Ad Studio setup and verification](docs/AD_STUDIO_SETUP.md) before deploying.
 **The upstream instructions below describe the original browser-only app.** Keys
@@ -130,6 +131,9 @@ Open the studio, press **Add key**, and paste your platform key as `id:secret`.
 HF_API_BASE_URL=                      # generation API origin, server only
 NEXT_PUBLIC_SUPABASE_URL=             # Supabase project URL
 NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY= # Supabase browser-safe publishable key
+SUPABASE_SECRET_KEY=                  # worker only; never expose to the browser
+PROVIDER_ENCRYPTION_KEY=              # shared by web and worker; 64 hex chars
+WORKER_POLL_MS=5000                   # optional worker polling interval
 ```
 
 ### Commands
@@ -139,6 +143,7 @@ NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY= # Supabase browser-safe publishable key
 | `pnpm dev` | Dev server on port 3000 |
 | `pnpm build` | Production build |
 | `pnpm start` | Serve the production build |
+| `pnpm worker` | Run the generation and Remotion worker |
 | `pnpm brand` | Rebuild the icons and OG card in `public/` |
 
 ---

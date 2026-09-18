@@ -39,7 +39,16 @@ export async function saveCampaign(input: unknown): Promise<Result<Campaign>> {
   try {
     const value = campaignSchema.parse(input);
     const { db, user } = await requireAccount();
-    const fields = { name: value.name, plan: value.plan, status: value.status };
+    const fields = {
+      name: value.name,
+      plan: value.plan,
+      status: value.status,
+      budget_cents: value.budgetCents,
+      production_approved_at:
+        value.status === "approved" && value.approveProduction
+          ? new Date().toISOString()
+          : null,
+    };
     const query = value.id
       ? db
           .from("ad_campaigns")
@@ -49,7 +58,7 @@ export async function saveCampaign(input: unknown): Promise<Result<Campaign>> {
           .eq("revision", value.revision ?? 0)
       : db.from("ad_campaigns").insert({ ...fields, owner_id: user.id });
     const { data, error } = await query
-      .select("id, name, status, revision, updated_at, plan")
+      .select("id, name, status, revision, updated_at, plan, budget_cents, reserved_cents, spent_cents, production_approved_at")
       .maybeSingle();
     if (error)
       throw new Error(

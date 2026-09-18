@@ -41,6 +41,11 @@ export const brandSchema = z.object({
   color: z.string().regex(/^#[0-9a-f]{6}$/i),
   requiredText: list,
   prohibitedClaims: list,
+  fonts: list,
+  ctaLibrary: list,
+  voiceDirection: z.string().trim().max(2000).optional(),
+  musicDirection: z.string().trim().max(2000).optional(),
+  referenceNotes: z.string().trim().max(4000).optional(),
 });
 export type BrandKit = z.infer<typeof brandSchema>;
 
@@ -111,6 +116,8 @@ export const campaignSchema = z.object({
   revision: z.number().int().min(1).optional(),
   name: z.string().trim().min(1).max(120),
   status: z.enum(["draft", "approved", "archived"]),
+  budgetCents: z.number().int().min(0).max(10_000_000).default(0),
+  approveProduction: z.boolean().default(false),
   plan: planSchema,
 });
 export function validationMessage(error: z.ZodError): string {

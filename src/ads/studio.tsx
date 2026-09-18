@@ -20,6 +20,15 @@ import { rankVideoModels } from "./model-router";
 import { retimeBeat, shotPrompt, storyboardWarnings } from "./storyboard";
 import type { Campaign, SavedBrand } from "./repository";
 import type { AdBeat, AdBrief, AdPlan } from "./types";
+import { COMPANY_TEMPLATES } from "./company-templates";
+import { getProductionState } from "./production-actions";
+import type { ProductionState } from "./production-types";
+import {
+  AnalyticsPanel,
+  ProductionLibrary,
+  RunwayCredentials,
+  ShotProductionControls,
+} from "./production-ui";
 
 const emptyBrief: AdBrief = {
   brandName: "",
@@ -69,6 +78,8 @@ export function AdStudio({
   const [busy, setBusy] = useState(false);
   const [panel, setPanel] = useState<"brief" | "brand" | "provider">("brief");
   const [color, setColor] = useState("#d1fe17");
+  const [budgetCents, setBudgetCents] = useState(10_000);
+  const [production, setProduction] = useState<ProductionState | null>(null);
   const variant = plan?.variants[variantIndex];
 
   useEffect(() => {
@@ -81,6 +92,33 @@ export function AdStudio({
     window.addEventListener("beforeunload", warn);
     return () => window.removeEventListener("beforeunload", warn);
   }, [dirty]);
+
+  async function refreshProduction() {
+    if (!saved) {
+      setProduction(null);
+      return;
+    }
+    const result = await getProductionState(saved.id);
+    if (result.data) setProduction(result.data);
+  }
+
+  useEffect(() => {
+    if (!saved) {
+      setProduction(null);
+      return;
+    }
+    let live = true;
+    const refresh = async () => {
+      const result = await getProductionState(saved.id);
+      if (live && result.data) setProduction(result.data);
+    };
+    void refresh();
+    const timer = window.setInterval(() => void refresh(), 8_000);
+    return () => {
+      live = false;
+      window.clearInterval(timer);
+    };
+  }, [saved?.id]);
 
   function mayDiscard() {
     return !dirty || window.confirm("Discard unsaved edits and continue?");
@@ -96,6 +134,8 @@ export function AdStudio({
     setName("");
     setBrief(emptyBrief);
     setVariantIndex(0);
+    setBudgetCents(10_000);
+    setProduction(null);
     setDirty(false);
     setPanel("brief");
     setNotice("");
@@ -107,6 +147,8 @@ export function AdStudio({
     setBrief(campaign.plan.brief);
     setName(campaign.name);
     setVariantIndex(0);
+    setBudgetCents(campaign.budget_cents);
+    setProduction(null);
     setDirty(false);
     setPanel("brief");
     setNotice("");
@@ -167,6 +209,8 @@ export function AdStudio({
           : {}),
         name: duplicate ? `${name.slice(0, 110)} copy` : name,
         status,
+        budgetCents,
+        approveProduction: status === "approved",
         plan,
       });
       if (result.error) {
@@ -335,6 +379,29 @@ export function AdStudio({
                   Claims are a review checklist, not an automated legal
                   approval.
                 </p>
+                <div className="ads-company-presets" aria-label="Company brand templates">
+                  {COMPANY_TEMPLATES.map((template) => (
+                    <button
+                      type="button"
+                      key={template.id}
+                      onClick={() => {
+                        const kit = template.kit;
+                        changeBrief({
+                          brandName: kit.name,
+                          productName: kit.product,
+                          audience: kit.audience,
+                          tone: kit.tone,
+                          requiredText: kit.requiredText,
+                          prohibitedClaims: kit.prohibitedClaims,
+                        });
+                        setColor(kit.color);
+                        setNotice(`${template.label} production template loaded.`);
+                      }}
+                    >
+                      Load {template.label}
+                    </button>
+                  ))}
+                </div>
                 <div className="ads-grid">
                   <label>
                     Brand name
@@ -425,6 +492,11 @@ export function AdStudio({
                       prohibitedClaims: (brief.prohibitedClaims ?? []).filter(
                         Boolean,
                       ),
+                      fonts: [],
+                      ctaLibrary: [],
+                      voiceDirection: undefined,
+                      musicDirection: undefined,
+                      referenceNotes: undefined,
                     };
                     const parsed = brandSchema.safeParse(kit);
                     if (!parsed.success) {
@@ -449,8 +521,8 @@ export function AdStudio({
                   {busy ? "Saving…" : "Save brand template"}
                 </button>
                 <p className="ads-muted">
-                  Logo uploads, font libraries, and shared team workspaces are
-                  planned next.
+                  Logos and reference files can be attached in the campaign
+                  media library. Shared team workspaces are still planned.
                 </p>
               </section>
             )}
@@ -459,9 +531,11 @@ export function AdStudio({
               <section className="ads-card ads-stack">
                 <h2>Generation provider</h2>
                 <p>
-                  The current platform API is connected through a provider
-                  adapter. Additional providers aren’t wired up yet.
+                  Runway powers campaign shot jobs. The legacy platform adapter
+                  remains available in the generation workbench.
                 </p>
+                <RunwayCredentials notice={setNotice} />
+                <hr />
                 <ProviderForm enabled={cloud} report={setNotice} />
                 <p className="ads-muted">
                   Keys are encrypted server-side and stored against your
@@ -859,11 +933,38 @@ export function AdStudio({
                             )}
                             <pre>{shotPrompt(plan.brief, beat)}</pre>
                           </details>
+                          {saved && (
+                            <ShotProductionControls
+                              campaign={saved}
+                              state={production}
+                              refresh={refreshProduction}
+                              notice={setNotice}
+                              variantId={variant.id}
+                              beatId={beat.id}
+                            />
+                          )}
                         </div>
                       </article>
                     );
                   })}
                 </div>
+                {saved && (
+                  <>
+                    <ProductionLibrary
+                      campaign={saved}
+                      state={production}
+                      refresh={refreshProduction}
+                      notice={setNotice}
+                      variant={variant}
+                    />
+                    <AnalyticsPanel
+                      campaign={saved}
+                      state={production}
+                      refresh={refreshProduction}
+                      notice={setNotice}
+                    />
+                  </>
+                )}
                 <Review brief={plan.brief} variant={variant} />
                 <div className="ads-savebar">
                   <p>
@@ -873,6 +974,26 @@ export function AdStudio({
                         ? "Archived campaign. Save a draft to reopen it."
                         : "Save your work or approve the storyboard for production."}
                   </p>
+                  <label className="ads-budget">
+                    Production budget
+                    <span>$</span>
+                    <input
+                      type="number"
+                      min="0"
+                      max="100000"
+                      step="1"
+                      value={(budgetCents / 100).toFixed(0)}
+                      onChange={(event) => {
+                        setBudgetCents(Math.max(0, Math.round(Number(event.target.value) * 100)));
+                        setDirty(true);
+                      }}
+                    />
+                    {saved && (
+                      <small>
+                        ${(saved.spent_cents / 100).toFixed(2)} spent · ${(saved.reserved_cents / 100).toFixed(2)} reserved
+                      </small>
+                    )}
+                  </label>
                   <div>
                     <button
                       disabled={
@@ -897,7 +1018,7 @@ export function AdStudio({
                       onClick={() => {
                         if (
                           window.confirm(
-                            "Confirm you reviewed every concept's copy, claims, and timing. Approval does not generate or publish video.",
+                            `Approve this storyboard and a $${(budgetCents / 100).toFixed(2)} maximum production budget? Generation starts only when you press Generate on a shot.`,
                           )
                         )
                           void persist("approved");
