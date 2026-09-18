@@ -18,7 +18,7 @@ The product becomes defensible through:
 
 The current repository is a capable single-user generation console:
 
-- Next.js 16, React 19, Zustand, and Vercel Blob.
+- Next.js 16, React 19, Zustand, Railway, and Supabase Storage.
 - 38 image and video entries in a catalog.
 - One normalized request shape: model, prompt, media, and settings.
 - One upstream generation API selected through `HF_API_BASE_URL`.
@@ -28,7 +28,7 @@ The current repository is a capable single-user generation console:
 Issues to correct before public multi-user use:
 
 - The API key is stored as plain JSON in an httpOnly cookie. Move provider secrets to server-side encrypted storage.
-- `/api/blob` allows unauthenticated uploads.
+- Upload authorization is account-scoped through Supabase Storage policies.
 - Generation request and response bodies are written to server logs.
 - There is no ownership check for uploads, projects, or generations.
 - The repository describes itself as open source but contains no license file. Choose a license before accepting outside contributions or commercial forks.

@@ -35,8 +35,9 @@ Use a dedicated Supabase project; no existing business database was modified.
    in hex. Store it only in server-side deployment secrets. Back it up securely;
    replacing it makes previously encrypted keys unreadable. Rotation currently
    requires users to remove and re-enter their provider credentials.
-5. Set a verified HTTPS `HF_API_BASE_URL` and the existing
-   `OPEN_HIGGSFIELD_READ_WRITE_TOKEN` for generation-media uploads.
+5. Apply `supabase/migrations/20260918120610_railway_supabase_storage.sql`.
+   Set a verified HTTPS `HF_API_BASE_URL` for generation requests. Uploads use
+   the same Supabase project and need no separate storage secret.
 6. Deploy, register two test accounts, confirm both emails, and execute the live
    checklist below before public access.
 
@@ -53,7 +54,7 @@ AES-256-GCM encrypted with account/provider-bound authenticated data before
 database storage. The app never returns plaintext stored keys to the browser.
 
 Uploads require a verified account, use account-prefixed random paths and have a
-100 MB per-file cap. Media still uses public Vercel Blob URLs so providers can
+100 MB per-file cap. Media uses public Supabase Storage URLs so providers can
 read it. These are not private files; the upload picker warns users. Daily account
 quotas, signed private media, lifecycle cleanup, and cloud generation history are
 not yet implemented. The legacy gallery still uses browser-local IndexedDB, so

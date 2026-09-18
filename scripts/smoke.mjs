@@ -42,31 +42,39 @@ try {
   });
   const page = await fetch(`${origin}/ads`, {
     headers: { Cookie: "api_key=old-raw-value" },
+    redirect: "manual",
   });
-  assert.equal(page.status, 200);
   assert.match(page.headers.get("cache-control"), /no-store/);
   assert.match(page.headers.get("set-cookie"), /api_key=;.*Max-Age=0/i);
-  const html = await page.text();
-  for (const text of [
-    "Preview mode",
-    "The creative brief",
-    "Build concepts",
-    "Fullcourt example",
-    "Provider settings",
-  ])
-    assert.ok(html.includes(text), `Missing ${text}`);
-  console.log(
-    "PASS /ads renders preview and never caches account pages or retains raw keys",
-  );
   const login = await fetch(`${origin}/ads/login`, { redirect: "manual" });
-  assert.equal(login.status, 307);
-  assert.equal(login.headers.get("location"), "/ads");
-  console.log("PASS unconfigured login returns to clearly labeled preview");
+  if (page.status === 200) {
+    const html = await page.text();
+    for (const text of [
+      "Preview mode",
+      "The creative brief",
+      "Build concepts",
+      "Fullcourt example",
+      "Provider settings",
+    ])
+      assert.ok(html.includes(text), `Missing ${text}`);
+    assert.equal(login.status, 307);
+    assert.equal(login.headers.get("location"), "/ads");
+    console.log("PASS unconfigured /ads renders the labeled preview workflow");
+  } else {
+    assert.equal(page.status, 307);
+    assert.equal(page.headers.get("location"), "/ads/login");
+    assert.equal(login.status, 200);
+    const html = await login.text();
+    assert.ok(html.includes("Sign in"));
+    assert.ok(html.includes("Need an account? Sign up"));
+    console.log("PASS configured /ads protects cloud workspaces with sign-in");
+  }
+  console.log("PASS account pages are never cached and raw keys are cleared");
   for (const [path, body] of [
     ["/api/ad-plan", {}],
     [
       "/api/blob",
-      { type: "blob.generate-client-token", payload: { pathname: "test.png" } },
+      { filename: "test.png", contentType: "image/png", size: 128 },
     ],
   ]) {
     const response = await fetch(`${origin}${path}`, {
