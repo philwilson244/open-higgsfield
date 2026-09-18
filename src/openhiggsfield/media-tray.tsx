@@ -167,7 +167,7 @@ export function MediaStrip({ model }: { model: ModelEntry }) {
                 {item.role === "audio" ? <AudioIcon size={20} /> : <VideoIcon size={20} />}
               </span>
             ) : (
-              /* Blob-hosted user upload; next/image would proxy an arbitrary
+              /* Storage-hosted user upload; next/image would proxy an arbitrary
                  remote host for a 56px thumb. */
               /* eslint-disable-next-line @next/next/no-img-element */
               <img

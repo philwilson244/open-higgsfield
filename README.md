@@ -36,7 +36,7 @@ platform key (`id:secret`) to start generating. The studio itself is free.
 
 ---
 
-Next.js 16 App Router on Vercel · React 19 · plain CSS · Zustand · pnpm
+Next.js 16 App Router on Railway · React 19 · plain CSS · Zustand · pnpm
 
 ---
 
@@ -54,8 +54,8 @@ Next.js 16 App Router on Vercel · React 19 · plain CSS · Zustand · pnpm
   audio, batch size, prompt enhancement — each model declares its own allow-list
   and the studio renders exactly that. No parallel hardcoded list.
 - **Media inputs by role.** Start frame, end frame, references, video and audio,
-  each with the per-role cap the model declares. Files upload to Vercel Blob and
-  become public URLs the generate request can carry.
+  each with the per-role cap the model declares. Files upload to Supabase
+  Storage and become public URLs the generate request can carry.
 - **Asset picker.** Attach from your uploads library or from any finished run in
   history — two tabs over one library, filtered to the role's kind.
 - **Batch.** Up to 4 results per press. Models with a native count setting use it;
@@ -110,7 +110,7 @@ Each generate is one object: `{ model, prompt, media, settings }`.
   no studio changes.
 - **Five small Zustand stores** — shared image/video prompt, shared image/video
   media, `settings[modelId]`, and a tiny `active` store. No store per model.
-- **Uploads** go client-direct to Vercel Blob through `/api/blob`, which issues
+- **Uploads** go client-direct to Supabase Storage through `/api/blob`, which issues
   scoped tokens. `blob:` URLs are preview-only.
 
 ---
@@ -128,7 +128,8 @@ Open the studio, press **Add key**, and paste your platform key as `id:secret`.
 
 ```bash
 HF_API_BASE_URL=                      # generation API origin, server only
-OPEN_HIGGSFIELD_READ_WRITE_TOKEN=     # Vercel Blob read-write token
+NEXT_PUBLIC_SUPABASE_URL=             # Supabase project URL
+NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY= # Supabase browser-safe publishable key
 ```
 
 ### Commands
