@@ -2,13 +2,13 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import { hasPlatformCredentials, submitGeneration } from "@/generation/actions";
+import { cancelGeneration, hasPlatformCredentials, submitGeneration } from "@/generation/actions";
 import { MissingCredentialsError } from "@/generation/credentials";
 import { MODELS, getModel } from "@/generation/catalog";
 import type { Surface } from "@/generation/catalog";
 import { assemblePlane } from "@/generation/plane";
 import type { GenerationStatus } from "@/generation/platform";
-import { POLL_DEADLINE_MS, stopWatching, watchRequest } from "@/generation/poll";
+import { cancelWatching, POLL_DEADLINE_MS, stopWatching, watchRequest } from "@/generation/poll";
 import { useActive } from "@/generation/stores/active";
 import { useImagePrompt, useVideoPrompt } from "@/generation/stores/prompt";
 import { useSettings } from "@/generation/stores/settings";
@@ -43,6 +43,8 @@ export interface ActiveRun {
   modelLabel: string;
   ratio: string;
   startedAt: number;
+  requestId?: string;
+  cancelUrl?: string;
 }
 
 type RunDraft = {
@@ -81,12 +83,13 @@ function draftOf(record: RunRecord): RunDraft {
   };
 }
 
-function runningRows(requestId: string, count: number, draft: RunDraft): RunRecord[] {
+function runningRows(requestId: string, count: number, draft: RunDraft, cancelUrl?: string): RunRecord[] {
   return Array.from({ length: count }, (_, offset) => {
     const id = rowId(requestId, offset, count);
     return {
       id,
       requestId,
+      cancelUrl,
       surface: draft.surface,
       modelId: draft.modelId,
       modelLabel: draft.modelLabel,
@@ -381,7 +384,7 @@ export function OpenHiggsfieldApp({ fontClassName = "" }: { fontClassName?: stri
       try {
         const queued = await submitGeneration(plane);
         setHistory((prev) => {
-          const next = [...runningRows(queued.requestId, slot.skeletons.length, draft), ...prev];
+          const next = [...runningRows(queued.requestId, slot.skeletons.length, draft, queued.cancelUrl || undefined), ...prev];
           void saveHistory(next);
           return next;
         });
@@ -598,6 +601,11 @@ export function OpenHiggsfieldApp({ fontClassName = "" }: { fontClassName?: stri
   const openViewer = useCallback((id: string) => setViewerId(id), []);
   const openKeys = useCallback(() => setKeysOpen(true), []);
   const runGenerate = useCallback(() => void generate(), [generate]);
+  const cancelRun = useCallback(async (run: ActiveRun) => {
+    if (!run.requestId) return;
+    await cancelGeneration({ requestId: run.requestId, cancelUrl: run.cancelUrl });
+    cancelWatching(run.requestId);
+  }, []);
   const downloadSelection = useCallback(() => void downloadPicked(), [downloadPicked]);
   const dismissDeleted = useCallback(() => setDeleted(null), []);
   const viewerItem = viewerId
@@ -645,6 +653,7 @@ export function OpenHiggsfieldApp({ fontClassName = "" }: { fontClassName?: stri
             onFavorite={toggleFavorite}
             onDownload={downloadRun}
             onDelete={deleteRun}
+            onCancel={cancelRun}
             onStarter={applyStarter}
             galleryRef={galleryRef}
           />

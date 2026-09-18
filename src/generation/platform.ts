@@ -50,8 +50,10 @@ export function createPlatformClient(options: PlatformClientOptions) {
   const fetchImpl = options.fetch ?? fetch;
   const auth = toAuthorizationHeader(options.apiKey);
 
-  async function send(method: "GET" | "POST", path: string, body?: Record<string, unknown>) {
-    const url = `${baseUrl}${path}`;
+  async function send(method: "GET" | "POST" | "DELETE", path: string, body?: Record<string, unknown>) {
+    const url = path.startsWith("https://") ? path : `${baseUrl}${path}`;
+    if (new URL(url).origin !== new URL(baseUrl).origin)
+      throw new PlatformError(400, { detail: "Invalid cancellation URL" });
     const response = await fetchImpl(url, {
       method,
       signal: AbortSignal.timeout(30000),
@@ -77,6 +79,11 @@ export function createPlatformClient(options: PlatformClientOptions) {
     async status(requestId: string): Promise<GenerationStatus> {
       if (!requestId) throw new PlatformError(400, { detail: "Missing request id" });
       return mapStatus(await send("GET", `/requests/${encodeURIComponent(requestId)}/status`));
+    },
+    async cancel(requestId: string, cancelUrl?: string): Promise<void> {
+      if (!requestId) throw new PlatformError(400, { detail: "Missing request id" });
+      const path = cancelUrl || `/requests/${encodeURIComponent(requestId)}/cancel`;
+      await send("POST", path);
     },
   };
 }

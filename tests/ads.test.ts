@@ -19,6 +19,7 @@ import { createPlatformClient } from "../src/generation/platform";
 import { createRunwayClient, estimateRunwayVideoCents, runwayRatio } from "../src/generation/providers/runway";
 import { parseMetricsCsv } from "../src/ads/analytics";
 import { COMPANY_TEMPLATES } from "../src/ads/company-templates";
+import { MODELS } from "../src/generation/catalog";
 import type { ModelEntry } from "../src/generation/catalog/types";
 
 const brief = briefSchema.parse({
@@ -152,6 +153,27 @@ test("feed crops are explicitly flagged", () => {
   assert.ok(
     routes.some((r) => r.requiresCrop && r.renderAspectRatio === "9:16"),
   );
+});
+test("router accounts for price, provider health, quality, and availability", () => {
+  const baseRequest = { target: AD_TARGETS.tiktok, shotDurationSeconds: 3 };
+  const baseline = rankVideoModels(baseRequest);
+  assert.ok(baseline.length >= 2);
+  const [first, second] = baseline;
+  const ranked = rankVideoModels({
+    ...baseRequest,
+    signals: {
+      [first!.modelId]: { available: false },
+      [second!.modelId]: {
+        provider: "healthy-provider", available: true, estimatedCostCents: 25,
+        providerHealth: 0.99, historicalQuality: 0.9,
+      },
+    },
+  }, MODELS);
+  assert.ok(!ranked.some((route) => route.modelId === first!.modelId));
+  const route = ranked.find((item) => item.modelId === second!.modelId)!;
+  assert.ok(route.reasons.some((reason) => reason.includes("estimated cost")));
+  assert.ok(route.reasons.some((reason) => reason.includes("provider health")));
+  assert.ok(route.reasons.some((reason) => reason.includes("historical acceptance")));
 });
 test("retiming preserves total duration and rejects invalid neighbor timing", () => {
   const variant = createAdPlan(brief).variants[0]!;

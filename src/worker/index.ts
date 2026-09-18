@@ -13,6 +13,7 @@ type GenerationJob = {
   id: string; owner_id: string; campaign_id: string; shot_id: string;
   provider: string; model: string; prompt: string; input: Record<string, unknown>;
   external_id: string | null; estimated_cost_cents: number; attempts: number; max_attempts: number;
+  cancel_requested_at: string | null;
 };
 type RenderJob = {
   id: string; owner_id: string; campaign_id: string; variant_id: string;
@@ -25,6 +26,7 @@ type RenderJob = {
 const db = adminDatabase();
 const pollMs = Math.max(1000, Number(process.env.WORKER_POLL_MS ?? 5000));
 let remotionBundle: Promise<string> | undefined;
+let lastCleanup = 0;
 
 function errorMessage(error: unknown) {
   return error instanceof Error ? error.message.slice(0, 4000) : "Unknown worker error";
@@ -53,6 +55,14 @@ async function processGeneration(job: GenerationJob) {
       .select("encrypted_key").eq("owner_id", job.owner_id).eq("provider", job.provider).single();
     if (error || !account) throw new Error("Runway credentials are unavailable");
     const client = createRunwayClient(decryptSecret(account.encrypted_key, `${job.owner_id}:${job.provider}`));
+    if (job.cancel_requested_at) {
+      if (job.external_id) await client.cancel(job.external_id);
+      const canceled = await db.rpc("finish_ad_generation_job", {
+        p_job_id: job.id, p_status: "canceled", p_actual_cost_cents: 0, p_error: "Canceled by user",
+      });
+      if (canceled.error) throw canceled.error;
+      return;
+    }
     if (!job.external_id) {
       const submitted = await client.submitTextVideo({
         model: job.model,
@@ -152,6 +162,25 @@ async function processRender(job: RenderJob) {
 }
 
 async function tick() {
+  if (Date.now() - lastCleanup > 60 * 60 * 1000) {
+    const { data: expired, error } = await db.from("ad_media_objects")
+      .select("id,owner_id,storage_bucket,storage_path")
+      .is("deleted_at", null).lte("expires_at", new Date().toISOString()).limit(25);
+    if (error) throw error;
+    for (const media of expired ?? []) {
+      const removed = await db.storage.from(media.storage_bucket).remove([media.storage_path]);
+      if (removed.error) { console.error("media cleanup", media.id, removed.error.message); continue; }
+      await db.from("ad_media_objects").update({ deleted_at: new Date().toISOString() }).eq("id", media.id);
+      await db.from("ad_audit_events").insert({
+        owner_id: media.owner_id, actor_id: null, event_type: "media.expired",
+        entity_type: "media_object", entity_id: media.id, details: { storage_path: media.storage_path },
+      });
+    }
+    const cutoff = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString();
+    const windows = await db.from("ad_rate_windows").delete().lt("window_start", cutoff);
+    if (windows.error) throw windows.error;
+    lastCleanup = Date.now();
+  }
   const generation = await db.rpc("claim_ad_generation_job");
   if (generation.error) throw generation.error;
   if (generation.data?.[0]) await processGeneration(generation.data[0] as GenerationJob);

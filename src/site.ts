@@ -11,12 +11,12 @@ function resolveOrigin(): string {
 
 export const SITE_URL = resolveOrigin();
 
-export const SITE_NAME = "OpenHiggsfield AI";
-export const SITE_DESCRIPTOR = "Open source AI studio";
+export const SITE_NAME = "Wilson Creative Studio";
+export const SITE_DESCRIPTOR = "AI advertising production";
 export const SITE_TITLE = `${SITE_NAME} — ${SITE_DESCRIPTOR}`;
 
 export const SITE_DESCRIPTION =
-  "A studio for image and video generation — one prompt bar, each model’s own settings, and every finished run in one gallery.";
+  "Plan, generate, review, render, and score campaign-ready video ads across brands and social channels.";
 
 /** Near-black studio ground; also the installed-app and browser-chrome color. */
 export const STUDIO_BG = "#0a0a0b";
@@ -32,7 +32,7 @@ export const OG_IMAGE = {
   width: 1200,
   height: 630,
   type: "image/png",
-  alt: "The OpenHiggsfield AI open-frame mark on a near-black field, above the OpenHiggsfield AI wordmark, the words Open source AI studio, and a line describing one prompt bar for image and video with every finished run in one gallery.",
+  alt: "The Wilson Creative Studio mark above a unified AI image, video, and advertising workspace.",
 };
 
 /* Next replaces the whole `openGraph` (and `twitter`) object when a route

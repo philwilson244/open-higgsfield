@@ -24,5 +24,8 @@ export function createLegacyPlatformProvider(
     status(requestId) {
       return client.status(requestId);
     },
+    cancel(requestId, cancelUrl) {
+      return client.cancel(requestId, cancelUrl);
+    },
   };
 }

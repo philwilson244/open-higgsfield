@@ -21,4 +21,5 @@ export interface GenerationProvider {
   readonly capabilities: ProviderCapabilities;
   submit(input: ProviderSubmission): Promise<QueuedGeneration>;
   status(requestId: string): Promise<GenerationStatus>;
+  cancel(requestId: string, cancelUrl?: string): Promise<void>;
 }

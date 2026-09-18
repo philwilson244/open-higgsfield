@@ -68,6 +68,8 @@ function slotsOf(runs: ActiveRun[], items: RunRecord[]): Slot[] {
           modelLabel: item.modelLabel,
           ratio: item.ratio,
           startedAt: item.createdAt,
+          requestId: item.requestId,
+          cancelUrl: item.cancelUrl,
         },
       });
       return;
@@ -341,6 +343,7 @@ export const Gallery = memo(function Gallery({
   onFavorite,
   onDownload,
   onDelete,
+  onCancel,
   onStarter,
   galleryRef,
 }: {
@@ -356,6 +359,7 @@ export const Gallery = memo(function Gallery({
   onFavorite: (item: RunRecord) => void;
   onDownload: (item: RunRecord) => Promise<void>;
   onDelete: (item: RunRecord) => void;
+  onCancel: (run: ActiveRun) => Promise<void>;
   onStarter: (prompt: string) => void;
   galleryRef: RefObject<HTMLDivElement | null>;
 }) {
@@ -391,6 +395,7 @@ export const Gallery = memo(function Gallery({
         onFavorite={onFavorite}
         onDownload={onDownload}
         onDelete={onDelete}
+        onCancel={onCancel}
       />
     </div>
   );
@@ -409,6 +414,7 @@ function VirtualizedGrid({
   onFavorite,
   onDownload,
   onDelete,
+  onCancel,
 }: {
   scrollRef: RefObject<HTMLDivElement | null>;
   selecting: boolean;
@@ -422,6 +428,7 @@ function VirtualizedGrid({
   onFavorite: (item: RunRecord) => void;
   onDownload: (item: RunRecord) => Promise<void>;
   onDelete: (item: RunRecord) => void;
+  onCancel: (run: ActiveRun) => Promise<void>;
 }) {
   const width = useInnerWidth(scrollRef);
   const slots = useMemo(() => slotsOf(runs, items), [runs, items]);
@@ -461,7 +468,7 @@ function VirtualizedGrid({
           >
             {slice.map((slot) =>
               slot.kind === "run" ? (
-                <RunningTile key={slot.key} run={slot.run} />
+                <RunningTile key={slot.key} run={slot.run} onCancel={onCancel} />
               ) : (
                 <Tile
                   key={slot.key}
@@ -545,7 +552,7 @@ function Empty({
   );
 }
 
-function RunningTile({ run }: { run: ActiveRun }) {
+function RunningTile({ run, onCancel }: { run: ActiveRun; onCancel: (run: ActiveRun) => Promise<void> }) {
   const [elapsed, setElapsed] = useState(0);
 
   useEffect(() => {
@@ -565,6 +572,11 @@ function RunningTile({ run }: { run: ActiveRun }) {
       <span className="ohf-skeleton-clock">
         {Math.floor(elapsed / 60)}:{String(elapsed % 60).padStart(2, "0")}
       </span>
+      {run.requestId ? (
+        <button type="button" className="ohf-skeleton-cancel" onClick={() => void onCancel(run)}>
+          Cancel
+        </button>
+      ) : null}
     </div>
   );
 }

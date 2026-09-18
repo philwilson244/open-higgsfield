@@ -62,6 +62,13 @@ export function stopWatching(): void {
   inflight.clear();
 }
 
+export function cancelWatching(requestId: string): void {
+  const waiter = waiting.get(requestId);
+  if (!waiter) return;
+  waiting.delete(requestId);
+  waiter.resolve({ status: "canceled", requestId });
+}
+
 function schedule(): void {
   if (timer !== null || polling || waiting.size === 0) return;
   timer = setTimeout(() => void round(), POLL_INTERVAL_MS);

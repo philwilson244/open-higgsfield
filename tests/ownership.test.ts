@@ -39,6 +39,24 @@ test("database ownership, anonymous denial, reassignment defense, and stale revi
         "utf8",
       ),
     );
+    await db.exec(
+      await readFile(
+        new URL(
+          "../supabase/migrations/20260918183849_production_hardening.sql",
+          import.meta.url,
+        ),
+        "utf8",
+      ),
+    );
+    await db.exec(
+      await readFile(
+        new URL(
+          "../supabase/migrations/20260918185545_production_hardening_advisor_fixes.sql",
+          import.meta.url,
+        ),
+        "utf8",
+      ),
+    );
     await db.exec(`set role authenticated; set request.user_id = '${a}';`);
     await t.test(
       "an owner can create brand, campaign, and encrypted provider account",
@@ -60,10 +78,9 @@ test("database ownership, anonymous denial, reassignment defense, and stale revi
     await t.test("production rows stay campaign-owner scoped", async () => {
       await db.exec(`set request.user_id='${a}';
         update public.ad_campaigns set status='approved', budget_cents=1000, production_approved_at=now();
-        insert into public.ad_shots(owner_id,campaign_id,variant_id,beat_id,position,spec)
-          select '${a}',id,'variant-a','beat-a',0,'{}' from public.ad_campaigns;
-        insert into public.ad_generation_jobs(owner_id,campaign_id,shot_id,provider,model,prompt,estimated_cost_cents)
-          select '${a}',campaign_id,id,'runway','gen4.5','A product shot',120 from public.ad_shots;
+        select public.enqueue_ad_generation_job(
+          id,'variant-a','beat-a',0,'{}','runway','gen4.5','A product shot','{}',120
+        ) from public.ad_campaigns;
       `);
       assert.equal((await db.query("select * from public.ad_shots")).rows.length, 1);
       assert.equal((await db.query("select * from public.ad_generation_jobs")).rows.length, 1);
@@ -71,6 +88,20 @@ test("database ownership, anonymous denial, reassignment defense, and stale revi
       assert.equal((await db.query("select * from public.ad_shots")).rows.length, 0);
       assert.equal((await db.query("select * from public.ad_generation_jobs")).rows.length, 0);
       await db.exec(`set request.user_id='${a}';`);
+    });
+    await t.test("paid generation is quota-counted, audited, and cancelable", async () => {
+      const usage = await db.query<{ generation_jobs: number; generation_cost_cents: number }>(
+        "select generation_jobs,generation_cost_cents from public.ad_daily_usage",
+      );
+      assert.deepEqual(usage.rows[0], { generation_jobs: 1, generation_cost_cents: 120 });
+      assert.equal((await db.query("select * from public.ad_audit_events where event_type='generation.queued'")).rows.length, 1);
+      await db.exec("select public.request_cancel_ad_generation_job(id) from public.ad_generation_jobs");
+      const job = await db.query<{ status: string; cancel_requested_at: string | null }>(
+        "select status,cancel_requested_at from public.ad_generation_jobs",
+      );
+      assert.equal(job.rows[0]?.status, "canceled");
+      assert.ok(job.rows[0]?.cancel_requested_at);
+      assert.equal((await db.query("select * from public.ad_audit_events where event_type='generation.cancel_requested'")).rows.length, 1);
     });
     await t.test(
       "owner updates increment revision, stale writes affect no rows",
@@ -150,6 +181,10 @@ test("database ownership, anonymous denial, reassignment defense, and stale revi
           "ad_render_jobs",
           "ad_usage_events",
           "ad_creative_metrics",
+          "ad_account_quotas",
+          "ad_daily_usage",
+          "ad_media_objects",
+          "ad_audit_events",
         ])
           assert.equal(
             (await db.query(`select * from public.${table}`)).rows.length,

@@ -7,7 +7,7 @@ import { encryptSecret } from "@/lib/secrets";
 import { planSchema } from "./schema";
 import { shotPrompt } from "./storyboard";
 import { parseMetricsCsv } from "./analytics";
-import type { CreativeMetric, GenerationJob, GenerationOutput, ProductionState, RenderJob } from "./production-types";
+import type { AuditEvent, CreativeMetric, GenerationJob, GenerationOutput, ProductionState, RenderJob } from "./production-types";
 import {
   estimateRunwayVideoCents,
   RUNWAY_DEFAULT_MODEL,
@@ -121,6 +121,19 @@ export async function selectGenerationCandidate(outputId: string): Promise<Actio
   }
 }
 
+export async function cancelGenerationJob(jobId: string): Promise<ActionResult<{ status: string }>> {
+  try {
+    const id = z.uuid().parse(jobId);
+    const { db } = await requireAccount();
+    const { data, error } = await db.rpc("request_cancel_ad_generation_job", { p_job_id: id });
+    if (error) throw error;
+    revalidatePath("/ads");
+    return { data: { status: String(data) } };
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : "Could not cancel generation" };
+  }
+}
+
 export async function enqueueCampaignRender(input: unknown): Promise<ActionResult<{ renderId: string }>> {
   try {
     const value = z.object({ campaignId: z.uuid(), variantId: z.string().min(1).max(150) }).parse(input);
@@ -131,6 +144,10 @@ export async function enqueueCampaignRender(input: unknown): Promise<ActionResul
     if (campaignError || !campaign) throw new Error("Campaign not found");
     if (campaign.status !== "approved" || !campaign.production_approved_at)
       throw new Error("Approve production before rendering");
+    const { error: quotaError } = await db.rpc("consume_ad_quota", {
+      p_action: "render", p_units: 1, p_cost_cents: 0,
+    });
+    if (quotaError) throw new Error(quotaError.message);
     const plan = planSchema.parse(campaign.plan);
     const variant = plan.variants.find((item) => item.id === value.variantId);
     if (!variant) throw new Error("Storyboard variant not found");
@@ -173,8 +190,8 @@ export async function getProductionState(campaignId: string): Promise<ActionResu
   try {
     const id = campaignIdSchema.parse(campaignId);
     const { db, user } = await requireAccount();
-    const [jobs, outputs, renders, metrics] = await Promise.all([
-      db.from("ad_generation_jobs").select("id,campaign_id,shot_id,provider,model,status,estimated_cost_cents,actual_cost_cents,error,created_at,ad_shots(beat_id)")
+    const [jobs, outputs, renders, metrics, audits] = await Promise.all([
+      db.from("ad_generation_jobs").select("id,campaign_id,shot_id,provider,model,status,estimated_cost_cents,actual_cost_cents,error,cancel_requested_at,created_at,ad_shots(beat_id)")
         .eq("campaign_id", id).eq("owner_id", user.id).order("created_at", { ascending: false }),
       db.from("ad_generation_outputs").select("id,campaign_id,shot_id,job_id,selected,mime_type,metadata,storage_bucket,storage_path,created_at")
         .eq("campaign_id", id).eq("owner_id", user.id).order("created_at", { ascending: false }),
@@ -182,8 +199,10 @@ export async function getProductionState(campaignId: string): Promise<ActionResu
         .eq("campaign_id", id).eq("owner_id", user.id).order("created_at", { ascending: false }),
       db.from("ad_creative_metrics").select("id,campaign_id,creative_id,platform,metric_date,spend_cents,impressions,three_second_views,completions,clicks,conversions,revenue_cents,score")
         .eq("campaign_id", id).eq("owner_id", user.id).order("score", { ascending: false }),
+      db.from("ad_audit_events").select("id,campaign_id,actor_id,event_type,entity_type,entity_id,details,created_at")
+        .eq("campaign_id", id).eq("owner_id", user.id).order("created_at", { ascending: false }).limit(50),
     ]);
-    const firstError = jobs.error ?? outputs.error ?? renders.error ?? metrics.error;
+    const firstError = jobs.error ?? outputs.error ?? renders.error ?? metrics.error ?? audits.error;
     if (firstError) throw firstError;
     const signedOutputs = await Promise.all((outputs.data ?? []).map(async (output) => {
       const { data } = await db.storage.from(output.storage_bucket).createSignedUrl(output.storage_path, 3600);
@@ -207,6 +226,7 @@ export async function getProductionState(campaignId: string): Promise<ActionResu
         outputs: signedOutputs,
         renders: signedRenders,
         metrics: (metrics.data ?? []) as CreativeMetric[],
+        audits: (audits.data ?? []) as AuditEvent[],
       },
     };
   } catch (error) {
@@ -222,6 +242,10 @@ export async function importCampaignMetrics(input: unknown): Promise<ActionResul
     const { data: campaign } = await db.from("ad_campaigns").select("id")
       .eq("id", value.campaignId).eq("owner_id", user.id).maybeSingle();
     if (!campaign) throw new Error("Campaign not found");
+    const { error: quotaError } = await db.rpc("consume_ad_quota", {
+      p_action: "analytics", p_units: 1, p_cost_cents: 0,
+    });
+    if (quotaError) throw new Error(quotaError.message);
     const payload = rows.map((row) => ({
       owner_id: user.id,
       campaign_id: campaign.id,

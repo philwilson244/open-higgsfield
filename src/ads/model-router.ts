@@ -7,6 +7,15 @@ export type ModelRoutingRequest = {
   target: AdTarget;
   shotDurationSeconds: number;
   requireNativeAudio?: boolean;
+  signals?: Readonly<Record<string, ModelRoutingSignals>>;
+};
+
+export type ModelRoutingSignals = {
+  provider?: string;
+  available?: boolean;
+  estimatedCostCents?: number;
+  providerHealth?: number;
+  historicalQuality?: number;
 };
 
 export type ModelRoute = {
@@ -46,6 +55,8 @@ function scoreModel(
   request: ModelRoutingRequest,
 ): ModelRoute | null {
   if (model.surface !== "video") return null;
+  const signals = request.signals?.[model.id];
+  if (signals?.available === false) return null;
 
   const ratio = chooseRatio(model, request.target.aspectRatio);
   if (!ratio) return null;
@@ -123,10 +134,27 @@ function scoreModel(
     reasons.push("accepts a controlled start frame");
   }
 
+  if (signals?.estimatedCostCents !== undefined) {
+    const costPenalty = Math.min(25, Math.max(0, signals.estimatedCostCents) / 10);
+    score -= costPenalty;
+    reasons.push(`estimated cost $${(signals.estimatedCostCents / 100).toFixed(2)}`);
+  }
+  if (signals?.providerHealth !== undefined) {
+    const health = Math.max(0, Math.min(1, signals.providerHealth));
+    score += (health - 0.5) * 20;
+    reasons.push(`${Math.round(health * 100)}% provider health`);
+  }
+  if (signals?.historicalQuality !== undefined) {
+    const quality = Math.max(0, Math.min(1, signals.historicalQuality));
+    score += quality * 20;
+    reasons.push(`${Math.round(quality * 100)}% historical acceptance`);
+  }
+  if (signals?.provider) reasons.push(`available from ${signals.provider}`);
+
   return {
     modelId: model.id,
     modelLabel: model.label,
-    score,
+    score: Math.round(score * 100) / 100,
     renderAspectRatio: ratio.renderAspectRatio,
     requiresCrop: ratio.requiresCrop,
     renderDurationSeconds,
