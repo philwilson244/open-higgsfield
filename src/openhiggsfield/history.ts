@@ -19,6 +19,7 @@ export interface RunRecord {
   /** Platform request this row is waiting on. Set while status is running so a
       refresh can resume the poll; completed rows keep it for the same id. */
   requestId?: string;
+  cancelUrl?: string;
   error?: string;
   /** Layered-gradient fallback used while media loads or when a run failed. */
   art: string;
@@ -149,6 +150,7 @@ function isRunRecord(value: unknown): value is RunRecord {
       (record.status === "running" && typeof record.requestId === "string")) &&
     typeof record.createdAt === "number" &&
     (record.requestId === undefined || typeof record.requestId === "string") &&
+    (record.cancelUrl === undefined || typeof record.cancelUrl === "string") &&
     (record.favorite === undefined || typeof record.favorite === "boolean") &&
     (record.settings === undefined ||
       (typeof record.settings === "object" && record.settings !== null))

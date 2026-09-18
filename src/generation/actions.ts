@@ -75,6 +75,7 @@ const planeSchema = z.object({
   ),
 });
 export async function submitGeneration(input: GenerationPlane) {
+  await consumeQuota("generation", 1, 0);
   const credentials = await readCredentials();
   const plane = planeSchema.parse(input);
   const model = getModel(plane.model);
@@ -97,6 +98,7 @@ export async function getGenerationStatuses(
   const { requestIds } = z
     .object({ requestIds: z.array(z.string().min(1).max(200)).min(1).max(60) })
     .parse(data);
+  await consumeQuota("status", 1, 0);
   const provider = createLegacyPlatformProvider(await readCredentials());
   return Promise.all(
     [...new Set(requestIds)].map(async (requestId): Promise<StatusResult> => {
@@ -110,6 +112,22 @@ export async function getGenerationStatuses(
       }
     }),
   );
+}
+export async function cancelGeneration(data: unknown): Promise<void> {
+  const { requestId, cancelUrl } = z.object({
+    requestId: z.string().min(1).max(200),
+    cancelUrl: z.string().url().max(4000).optional(),
+  }).parse(data);
+  await consumeQuota("status", 1, 0);
+  const provider = createLegacyPlatformProvider(await readCredentials());
+  await provider.cancel(requestId, cancelUrl);
+}
+async function consumeQuota(action: "generation" | "status", units: number, cost: number) {
+  const { db } = await requireAccount();
+  const { error } = await db.rpc("consume_ad_quota", {
+    p_action: action, p_units: units, p_cost_cents: cost,
+  });
+  if (error) throw new Error(error.message);
 }
 async function readCredentials() {
   const { db, user } = await requireAccount();

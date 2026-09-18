@@ -1,4 +1,4 @@
-/* OpenHiggsfield icon set — 16-grid, 1.5px stroke, round caps, currentColor.
+/* Wilson Creative Studio icon set — 16-grid, 1.5px stroke, round caps, currentColor.
    One drawing system across the surface; fills mark active/media badges only. */
 
 interface IconProps {

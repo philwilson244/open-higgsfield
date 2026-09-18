@@ -4,6 +4,7 @@ import { useRef, useState } from "react";
 import {
   enqueueCampaignRender,
   enqueueShotCandidates,
+  cancelGenerationJob,
   importCampaignMetrics,
   saveRunwayCredentials,
   selectGenerationCandidate,
@@ -100,6 +101,24 @@ export function ShotProductionControls({
       {jobs.some((job) => job.status === "failed") && (
         <p className="ads-warning">{jobs.find((job) => job.status === "failed")?.error ?? "A candidate failed."}</p>
       )}
+      {jobs.filter((job) => job.status === "queued" || job.status === "processing").map((job) => (
+        <button
+          key={job.id}
+          className="ads-cancel-job"
+          disabled={busy || Boolean(job.cancel_requested_at)}
+          onClick={() => {
+            setBusy(true);
+            void cancelGenerationJob(job.id)
+              .then(async (result) => {
+                notice(result.error ?? "Cancellation requested. Reserved budget will be released.");
+                await refresh();
+              })
+              .finally(() => setBusy(false));
+          }}
+        >
+          {job.cancel_requested_at ? "Cancellation pending…" : `Cancel ${job.model} job`}
+        </button>
+      ))}
       {outputs.length > 0 && (
         <div className="ads-candidate-grid">
           {outputs.map((output) => (
@@ -169,6 +188,20 @@ export function ProductionLibrary({ campaign, state, refresh, notice, variant }:
           ),
         )}
       </div>
+      <details className="ads-audit-trail">
+        <summary>Paid generation audit trail ({state?.audits.length ?? 0})</summary>
+        {state?.audits.length ? (
+          <ol>
+            {state.audits.slice(0, 20).map((event) => (
+              <li key={event.id}>
+                <strong>{event.event_type}</strong>{" "}
+                <span>{new Date(event.created_at).toLocaleString()}</span>{" "}
+                <small>{event.entity_type} {event.entity_id.slice(0, 8)}</small>
+              </li>
+            ))}
+          </ol>
+        ) : <p>No paid production events yet.</p>}
+      </details>
     </section>
   );
 }

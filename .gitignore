@@ -9,6 +9,8 @@ dist
 !.env.example
 .vercel
 tsconfig.tsbuildinfo
+playwright-report
+test-results
 
 .env*
 .idea

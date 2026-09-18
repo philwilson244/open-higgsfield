@@ -16,6 +16,7 @@ export type GenerationJob = {
   estimated_cost_cents: number;
   actual_cost_cents: number | null;
   error: string | null;
+  cancel_requested_at: string | null;
   created_at: string;
 };
 
@@ -58,9 +59,21 @@ export type CreativeMetric = {
   score: number;
 };
 
+export type AuditEvent = {
+  id: number;
+  campaign_id: string | null;
+  actor_id: string | null;
+  event_type: string;
+  entity_type: string;
+  entity_id: string;
+  details: Record<string, unknown>;
+  created_at: string;
+};
+
 export type ProductionState = {
   jobs: GenerationJob[];
   outputs: GenerationOutput[];
   renders: RenderJob[];
   metrics: CreativeMetric[];
+  audits: AuditEvent[];
 };

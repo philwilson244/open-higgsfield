@@ -1,7 +1,7 @@
 import { Composition, registerRoot } from "remotion";
 import { AdTimeline, type AdTimelineProps } from "./AdTimeline";
 
-const defaults: AdTimelineProps = { brand: "Open Higgsfield", clips: [] };
+const defaults: AdTimelineProps = { brand: "Wilson Creative Studio", clips: [] };
 
 function RemotionRoot() {
   return (

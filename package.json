@@ -1,5 +1,5 @@
 {
-  "name": "openhiggsfield-ai",
+  "name": "wilson-creative-studio",
   "private": true,
   "type": "module",
   "packageManager": "pnpm@12.4.2",
@@ -10,6 +10,7 @@
     "worker": "node --import tsx src/worker/index.ts",
     "brand": "node scripts/build-brand-assets.mjs",
     "test": "node --import tsx --test tests/*.test.ts",
+    "test:e2e": "playwright test",
     "typecheck": "tsc --noEmit",
     "test:smoke": "node scripts/smoke.mjs"
   },
@@ -30,6 +31,7 @@
   },
   "devDependencies": {
     "@electric-sql/pglite": "0.5.8",
+    "@playwright/test": "1.63.0",
     "@types/node": "^22.10.2",
     "@types/react": "^19.2.0",
     "@types/react-dom": "^19.2.0",

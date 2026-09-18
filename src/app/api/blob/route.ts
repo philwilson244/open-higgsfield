@@ -52,6 +52,12 @@ export async function POST(request: Request): Promise<NextResponse> {
 
   try {
     const { db, user } = await requireAccount();
+    const { error: quotaError } = await db.rpc("consume_ad_quota", {
+      p_action: "upload",
+      p_units: size,
+      p_cost_cents: 0,
+    });
+    if (quotaError) throw new Error(quotaError.message);
     const pathname = blobPathname(
       user.id,
       `${crypto.randomUUID()}-${filename}`,
@@ -60,6 +66,15 @@ export async function POST(request: Request): Promise<NextResponse> {
       .from(MEDIA_BUCKET)
       .createSignedUploadUrl(pathname);
     if (error) throw error;
+    const { error: mediaError } = await db.from("ad_media_objects").insert({
+      owner_id: user.id,
+      storage_bucket: MEDIA_BUCKET,
+      storage_path: pathname,
+      filename,
+      mime_type: contentType,
+      size_bytes: size,
+    });
+    if (mediaError) throw mediaError;
     const { data: publicAsset } = db.storage
       .from(MEDIA_BUCKET)
       .getPublicUrl(pathname);
@@ -75,6 +90,9 @@ export async function POST(request: Request): Promise<NextResponse> {
         { error: "Sign in at /ads/login to upload" },
         { status: 401 },
       );
+    const message = error instanceof Error ? error.message : "Media storage is unavailable";
+    if (message.includes("quota") || message.includes("Rate limit"))
+      return NextResponse.json({ error: message }, { status: 429 });
     console.error("Could not authorize media upload", error);
     return NextResponse.json(
       { error: "Media storage is unavailable" },

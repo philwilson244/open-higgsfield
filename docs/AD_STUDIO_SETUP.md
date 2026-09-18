@@ -1,101 +1,93 @@
-# Ad Studio: first usable release
+# Ad Studio production setup
 
-## What this branch does
+## Supabase
 
-Visit `/ads` from the generation studio. Build a brief, load a brand template,
-create three concepts per placement, edit every shot's visual direction, narration,
-copy and timing, review the warnings, and export the storyboard as JSON. With a
-configured account, save campaigns, reopen them, duplicate, approve or archive.
-Approval never spends money or publishes an ad.
+Use a dedicated project and apply every migration in `supabase/migrations` in
+filename order. The migrations create owner-scoped application data, encrypted
+provider accounts, shots, generation and render queues, campaign media, metrics,
+budgets, quotas, retention records, and audit events.
 
-The planner uses deterministic templates, not a trained model or an LLM API.
-Model suggestions use catalog capabilities, not live pricing or quality scores.
-Short beats now request longer source clips for trimming. No automated trimming,
-video assembly, second provider, or paid generation from storyboards is included.
+Set these variables on the Railway web service:
 
-Personal workspaces are owner-only. Shared teams, brand asset uploads, cloud media
-history, usage budgets and a render queue remain future work. Brand templates
-currently contain text rules and a color, not logos or fonts. Templates are saved
-as new records; campaign plans snapshot their brief so later template changes
-cannot alter an existing storyboard.
+- `NEXT_PUBLIC_SUPABASE_URL`
+- `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`
+- `PROVIDER_ENCRYPTION_KEY` — 32 cryptographically random bytes encoded as hex
+- `APP_URL` — canonical Railway HTTPS origin
+- `HF_API_BASE_URL` — verified legacy-provider origin, only when used
 
-## Required deployment configuration
+Set these variables on the Railway worker service:
 
-Use a dedicated Supabase project; no existing business database was modified.
+- `NEXT_PUBLIC_SUPABASE_URL`
+- `SUPABASE_SECRET_KEY`
+- `PROVIDER_ENCRYPTION_KEY`
+- provider-specific variables required by enabled adapters
 
-1. Apply `supabase/migrations/20260917220803_ad_studio_workspace.sql` through your
-   normal reviewed migration process. It creates only three prefixed tables,
-   indexes, ownership policies and a revision trigger.
-2. Set `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` before
-   building the app. No Supabase service-role key is needed or accepted by the UI.
-3. Set `APP_URL` to the app's canonical HTTPS origin. Configure the same Site URL
-   in Supabase Auth and allow `APP_URL/auth/callback` as a redirect. Keep email
-   confirmation enabled; configure email delivery and signup rate limits.
-4. Generate `PROVIDER_ENCRYPTION_KEY` as 32 cryptographically random bytes encoded
-   in hex. Store it only in server-side deployment secrets. Back it up securely;
-   replacing it makes previously encrypted keys unreadable. Rotation currently
-   requires users to remove and re-enter their provider credentials.
-5. Apply `supabase/migrations/20260918120610_railway_supabase_storage.sql`.
-   Set a verified HTTPS `HF_API_BASE_URL` for generation requests. Uploads use
-   the same Supabase project and need no separate storage secret.
-6. Deploy, register two test accounts, confirm both emails, and execute the live
-   checklist below before public access.
+The secret key and encryption key must never use a `NEXT_PUBLIC_` prefix. Back up
+the encryption key securely; replacing it makes saved provider credentials
+unreadable until users re-enter them.
 
-Without Supabase configuration, `/ads` shows a labeled preview. It does not save
-to a fake database or silently use browser storage. Save buttons are disabled;
-export JSON before leaving. Authenticated generation and uploads fail closed.
+Configure the Railway origin as the Supabase Auth Site URL and allow
+`APP_URL/auth/callback`. Keep email confirmation enabled and configure production
+email delivery.
 
-### Existing users
+## Railway services
 
-The generation studio remains at `/`. Users must now sign in at `/ads/login` and
-re-enter provider keys. Old `api_key` cookies are cleared, not imported into an
-arbitrary signed-in account. Generation payloads are no longer logged. Keys are
-AES-256-GCM encrypted with account/provider-bound authenticated data before
-database storage. The app never returns plaintext stored keys to the browser.
+Deploy two services from the same repository:
 
-Uploads require a verified account, use account-prefixed random paths and have a
-100 MB per-file cap. Media uses public Supabase Storage URLs so providers can
-read it. These are not private files; the upload picker warns users. Daily account
-quotas, signed private media, lifecycle cleanup, and cloud generation history are
-not yet implemented. The legacy gallery still uses browser-local IndexedDB, so
-it is not an account-isolated media library on shared devices. Treat the workbench
-as personal-device software until that migration is complete.
+1. Web service using `Dockerfile` and its HTTP health check.
+2. Background worker using `Dockerfile.worker` and `/health`.
 
-## Checks
+The worker claims durable jobs, polls providers, handles cancellation and retries,
+renders Remotion MP4s, records actual costs, and periodically deletes expired
+public uploads. If the worker is stopped, jobs remain durable but generation,
+rendering, cancellation, and retention cleanup do not progress.
 
-```
+## Security and data handling
+
+- Provider keys are AES-256-GCM encrypted at rest and never stored in cookies.
+- Old `api_key` cookies are deleted and are not imported into a user account.
+- Uploads are account-prefixed, randomly named, limited to 100 MB, and tracked
+  with a default 30-day expiry. They use public URLs only while a provider needs
+  to fetch them; the worker removes expired objects.
+- Generated media uses signed access and campaign ownership checks.
+- Database row-level security prevents cross-account access.
+- Generation and rendering require campaign approval and available budget.
+- Per-account windows and daily quotas limit upload bytes, generation attempts,
+  renders, analytics imports, and estimated cost.
+- Paid generation lifecycle and administrative campaign changes are appended to
+  owner-visible audit events.
+
+## Verification
+
+```bash
 pnpm install --frozen-lockfile
 pnpm test
+pnpm typecheck
 pnpm build
 pnpm test:smoke
+pnpm test:e2e
 ```
 
-Unit checks cover schemas, timing, short-shot routing, crop requirements, claim
-warnings, provider request compatibility and encryption. PostgreSQL tests run the
-actual migration in PGlite with two identities plus anonymous access; they verify
-RLS, denied ownership reassignment and revision conflicts. HTTP smoke tests cover
-preview rendering, uncached responses, legacy-cookie removal, unauthenticated
-planning/upload denial, malformed uploads, and the existing studio entry point.
+For production browser tests, configure:
 
-### Required live verification
+- `E2E_BASE_URL`
+- `E2E_USER_EMAIL`
+- `E2E_USER_PASSWORD`
+- `E2E_RUN_PAID_GENERATION=1` only for an approved paid test
 
-- Register, confirm email, sign in, reload, refresh the session, and sign out.
-- Account A saves a brand and campaign; verify reload restores both.
-- Account B cannot read or change A's campaign, brand, or encrypted provider row.
-- Edit the same campaign in two tabs; the stale tab must show a conflict.
-- Save/replace/remove a provider key; verify only ciphertext is persisted.
-- Upload a permitted file; reject an oversized file and unauthenticated upload.
-- Run one explicitly approved provider generation and confirm polling still works.
-- Check desktop and mobile storyboard editing in a hosted browser.
+The test account must have a configured provider account and sufficient quota and
+budget for the opt-in generation test.
 
-Live auth, email, media uploads and paid renders were not tested without a project
-and deployment. The remote browser could not reach the local development server.
+Before public use, verify two accounts cannot access one another's brands,
+campaigns, provider rows, jobs, media, quotas, or audits. Confirm a real upload is
+recorded with an expiry, a paid generation can be canceled, reserved cost is
+released correctly, rendered output is playable, and the audit event is visible.
 
-## References
+## Commercial launch checklist
 
-- [Supabase SSR setup](https://supabase.com/docs/guides/auth/server-side/creating-a-client)
-- [Next.js authentication](https://nextjs.org/docs/app/guides/authentication)
-
-Deployment is also subject to resolving the upstream repository's missing
-license. A README describing code as open source does not supply a license grant.
-Do not assign a license to the inherited code without confirming those rights.
+- Obtain trademark clearance for the public product and company branding.
+- Review provider commercial terms and output-use rights.
+- Establish privacy, retention, acceptable-use, copyright, and refund policies.
+- Configure alerting for worker health, failure rates, provider health, quota
+  pressure, cleanup failures, and unexpected daily spend.
+- Keep the repository private unless a separate license decision is made.
