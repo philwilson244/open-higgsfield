@@ -9,11 +9,15 @@ import { shotPrompt } from "./storyboard";
 import { parseMetricsCsv } from "./analytics";
 import type { AuditEvent, CreativeMetric, GenerationJob, GenerationOutput, ProductionState, RenderJob } from "./production-types";
 import {
-  estimateRunwayVideoCents,
-  RUNWAY_DEFAULT_MODEL,
   RUNWAY_PROVIDER_ID,
   runwayRatio,
 } from "@/generation/providers/runway";
+import { FAL_PROVIDER_ID } from "@/generation/providers/fal";
+import {
+  estimateProductionCents,
+  getProductionModel,
+  PRODUCTION_MODELS,
+} from "@/generation/providers/registry";
 
 type ActionResult<T = undefined> =
   | { data: T; error?: never }
@@ -25,23 +29,29 @@ const enqueueSchema = z.object({
   variantId: z.string().min(1).max(150),
   beatId: z.string().min(1).max(150),
   candidates: z.number().int().min(1).max(4).default(2),
-  model: z.enum(["gen4.5", "gen4_turbo"]).default(RUNWAY_DEFAULT_MODEL),
+  modelId: z.string().min(1).max(100).default("runway-gen4.5"),
+  referenceImageUrl: z.url().max(4000).optional(),
 });
 
-export async function saveRunwayCredentials(secret: string): Promise<ActionResult> {
+export async function saveProviderCredentials(provider: string, secret: string): Promise<ActionResult> {
   try {
+    const providerId = z.enum([RUNWAY_PROVIDER_ID, FAL_PROVIDER_ID]).parse(provider);
     const value = z.string().trim().min(20).max(4096).parse(secret);
     const { db, user } = await requireAccount();
-    const encrypted_key = encryptSecret(value, `${user.id}:${RUNWAY_PROVIDER_ID}`);
+    const encrypted_key = encryptSecret(value, `${user.id}:${providerId}`);
     const { error } = await db.from("ad_provider_accounts").upsert(
-      { owner_id: user.id, provider: RUNWAY_PROVIDER_ID, encrypted_key },
+      { owner_id: user.id, provider: providerId, encrypted_key },
       { onConflict: "owner_id,provider" },
     );
     if (error) throw error;
     return { data: undefined };
   } catch (error) {
-    return { error: error instanceof Error ? error.message : "Could not save the Runway key" };
+    return { error: error instanceof Error ? error.message : "Could not save the provider key" };
   }
+}
+
+export async function saveRunwayCredentials(secret: string): Promise<ActionResult> {
+  return saveProviderCredentials(RUNWAY_PROVIDER_ID, secret);
 }
 
 export async function hasRunwayCredentials(): Promise<boolean> {
@@ -55,19 +65,42 @@ export async function hasRunwayCredentials(): Promise<boolean> {
   }
 }
 
+export async function getConnectedProviders(): Promise<string[]> {
+  try {
+    const { db, user } = await requireAccount();
+    const { data } = await db.from("ad_provider_accounts")
+      .select("provider").eq("owner_id", user.id)
+      .in("provider", [RUNWAY_PROVIDER_ID, FAL_PROVIDER_ID]);
+    return (data ?? []).map((row) => row.provider);
+  } catch {
+    return [];
+  }
+}
+
+export async function getProductionModelCatalog() {
+  const connected = new Set(await getConnectedProviders());
+  return PRODUCTION_MODELS.map((model) => ({
+    ...model,
+    availability: connected.has(model.provider) ? "live" as const : "connect_provider" as const,
+  }));
+}
+
 export async function enqueueShotCandidates(input: unknown): Promise<ActionResult<{ jobIds: string[] }>> {
   try {
     const value = enqueueSchema.parse(input);
+    const productionModel = getProductionModel(value.modelId);
+    if (value.referenceImageUrl && !productionModel.supportsReferenceImage)
+      throw new Error(`${productionModel.label} does not accept a reference image`);
     const { db, user } = await requireAccount();
     const [{ data: campaign, error: campaignError }, { data: credential }] = await Promise.all([
       db.from("ad_campaigns")
         .select("id, owner_id, status, budget_cents, reserved_cents, spent_cents, production_approved_at, plan")
         .eq("id", value.campaignId).eq("owner_id", user.id).single(),
       db.from("ad_provider_accounts")
-        .select("provider").eq("owner_id", user.id).eq("provider", RUNWAY_PROVIDER_ID).maybeSingle(),
+        .select("provider").eq("owner_id", user.id).eq("provider", productionModel.provider).maybeSingle(),
     ]);
     if (campaignError || !campaign) throw new Error("Campaign not found");
-    if (!credential) throw new Error("Add a Runway API key before generating");
+    if (!credential) throw new Error(`Connect ${productionModel.provider} before generating with ${productionModel.label}`);
     if (campaign.status !== "approved" || !campaign.production_approved_at)
       throw new Error("Approve the storyboard and production budget before generating");
     const plan = planSchema.parse(campaign.plan);
@@ -76,11 +109,11 @@ export async function enqueueShotCandidates(input: unknown): Promise<ActionResul
     const beat = beatIndex >= 0 ? variant?.beats[beatIndex] : undefined;
     if (!variant || !beat) throw new Error("Storyboard shot not found");
     const duration = Math.max(2, Math.min(10, Math.ceil(beat.endSeconds - beat.startSeconds)));
-    const totalEstimate = estimateRunwayVideoCents(value.model, duration, value.candidates);
+    const totalEstimate = estimateProductionCents(productionModel, duration, value.candidates);
     if (campaign.spent_cents + campaign.reserved_cents + totalEstimate > campaign.budget_cents)
       throw new Error("These candidates exceed the remaining campaign budget");
     const prompt = shotPrompt(plan.brief, beat);
-    const estimateEach = estimateRunwayVideoCents(value.model, duration, 1);
+    const estimateEach = estimateProductionCents(productionModel, duration, 1);
     const jobIds: string[] = [];
     for (let candidateIndex = 0; candidateIndex < value.candidates; candidateIndex += 1) {
       const { data, error } = await db.rpc("enqueue_ad_generation_job", {
@@ -89,13 +122,16 @@ export async function enqueueShotCandidates(input: unknown): Promise<ActionResul
         p_beat_id: beat.id,
         p_position: beatIndex,
         p_spec: { beat, target: variant.target, candidateIndex },
-        p_provider: RUNWAY_PROVIDER_ID,
-        p_model: value.model,
+        p_provider: productionModel.provider,
+        p_model: productionModel.id,
         p_prompt: prompt,
         p_input: {
           ratio: runwayRatio(variant.target.aspectRatio),
+          aspectRatio: variant.target.aspectRatio,
           duration,
           candidateIndex,
+          providerModel: productionModel.providerModel,
+          ...(value.referenceImageUrl ? { referenceImageUrl: value.referenceImageUrl } : {}),
         },
         p_estimated_cost_cents: estimateEach,
       });

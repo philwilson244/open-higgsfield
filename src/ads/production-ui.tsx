@@ -6,9 +6,10 @@ import {
   enqueueShotCandidates,
   cancelGenerationJob,
   importCampaignMetrics,
-  saveRunwayCredentials,
+  saveProviderCredentials,
   selectGenerationCandidate,
 } from "./production-actions";
+import { PRODUCTION_MODELS } from "@/generation/providers/registry";
 import type { Campaign } from "./repository";
 import type { AdVariantPlan } from "./types";
 import type { ProductionState } from "./production-types";
@@ -20,7 +21,11 @@ type CommonProps = {
   notice: (message: string) => void;
 };
 
-export function RunwayCredentials({ notice }: { notice: (message: string) => void }) {
+function ProviderCredentialForm({ provider, label, notice }: {
+  provider: "runway" | "fal";
+  label: string;
+  notice: (message: string) => void;
+}) {
   const [secret, setSecret] = useState("");
   const [busy, setBusy] = useState(false);
   return (
@@ -29,20 +34,20 @@ export function RunwayCredentials({ notice }: { notice: (message: string) => voi
       onSubmit={(event) => {
         event.preventDefault();
         setBusy(true);
-        void saveRunwayCredentials(secret).then((result) => {
+        void saveProviderCredentials(provider, secret).then((result) => {
           setBusy(false);
           if (result.error) notice(result.error);
           else {
             setSecret("");
-            notice("Runway API key encrypted and saved.");
+            notice(`${label} API key encrypted and saved.`);
           }
         });
       }}
     >
-      <h3>Runway</h3>
+      <h3>{label}</h3>
       <p className="ads-muted">Used by the Railway production worker. The browser never receives this key.</p>
       <label>
-        Runway API secret
+        {label} API secret
         <input
           type="password"
           autoComplete="off"
@@ -52,9 +57,18 @@ export function RunwayCredentials({ notice }: { notice: (message: string) => voi
         />
       </label>
       <button className="ads-primary" disabled={busy || secret.trim().length < 20}>
-        {busy ? "Saving…" : "Save Runway key"}
+        {busy ? "Saving…" : `Save ${label} key`}
       </button>
     </form>
+  );
+}
+
+export function RunwayCredentials({ notice }: { notice: (message: string) => void }) {
+  return (
+    <div className="ads-stack">
+      <ProviderCredentialForm provider="runway" label="Runway" notice={notice} />
+      <ProviderCredentialForm provider="fal" label="fal.ai" notice={notice} />
+    </div>
   );
 }
 
@@ -67,6 +81,9 @@ export function ShotProductionControls({
   beatId,
 }: CommonProps & { variantId: string; beatId: string }) {
   const [busy, setBusy] = useState(false);
+  const [modelId, setModelId] = useState(PRODUCTION_MODELS[0].id);
+  const [referenceImageUrl, setReferenceImageUrl] = useState("");
+  const selectedModel = PRODUCTION_MODELS.find((model) => model.id === modelId) ?? PRODUCTION_MODELS[0];
   const jobs = state?.jobs.filter((job) => job.beat_id === beatId) ?? [];
   const jobIds = new Set(jobs.map((job) => job.id));
   const outputs = state?.outputs.filter((output) => jobIds.has(output.job_id)) ?? [];
@@ -85,10 +102,17 @@ export function ShotProductionControls({
           disabled={!approved || busy || active}
           onClick={() => {
             setBusy(true);
-            void enqueueShotCandidates({ campaignId: campaign.id, variantId, beatId, candidates: 2, model: "gen4.5" })
+            void enqueueShotCandidates({
+              campaignId: campaign.id,
+              variantId,
+              beatId,
+              candidates: 2,
+              modelId,
+              ...(referenceImageUrl ? { referenceImageUrl } : {}),
+            })
               .then(async (result) => {
                 if (result.error) notice(result.error);
-                else notice("Two Runway candidates queued. Reserved budget is shown in the campaign bar.");
+                else notice(`Two ${selectedModel.label} candidates queued. Reserved budget is shown in the campaign bar.`);
                 await refresh();
               })
               .finally(() => setBusy(false));
@@ -96,6 +120,29 @@ export function ShotProductionControls({
         >
           {busy ? "Queuing…" : outputs.length ? "Generate 2 more" : "Generate 2 candidates"}
         </button>
+      </div>
+      <div className="ads-production-options">
+        <label>
+          Generation model
+          <select value={modelId} onChange={(event) => setModelId(event.target.value)}>
+            {PRODUCTION_MODELS.map((model) => (
+              <option key={model.id} value={model.id}>
+                {model.label} · {model.provider === "runway" ? "Runway" : "fal.ai connection required"}
+              </option>
+            ))}
+          </select>
+        </label>
+        {selectedModel.supportsReferenceImage && (
+          <label>
+            Approved reference image URL
+            <input
+              type="url"
+              value={referenceImageUrl}
+              onChange={(event) => setReferenceImageUrl(event.target.value)}
+              placeholder="https://…"
+            />
+          </label>
+        )}
       </div>
       {!approved && <p className="ads-muted">Approve the storyboard and budget to enable paid generation.</p>}
       {jobs.some((job) => job.status === "failed") && (

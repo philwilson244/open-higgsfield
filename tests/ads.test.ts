@@ -17,6 +17,8 @@ import {
 import { encryptSecret, decryptSecret } from "../src/lib/secrets";
 import { createPlatformClient } from "../src/generation/platform";
 import { createRunwayClient, estimateRunwayVideoCents, runwayRatio } from "../src/generation/providers/runway";
+import { createFalClient } from "../src/generation/providers/fal";
+import { estimateProductionCents, getProductionModel, modelAvailability } from "../src/generation/providers/registry";
 import { parseMetricsCsv } from "../src/ads/analytics";
 import { COMPANY_TEMPLATES } from "../src/ads/company-templates";
 import { MODELS } from "../src/generation/catalog";
@@ -255,6 +257,31 @@ test("Runway adapter uses the versioned API contract and current credit estimate
   })).id, "runway-task");
   assert.equal(estimateRunwayVideoCents("gen4.5", 5, 2), 120);
   assert.equal(runwayRatio("16:9"), "1280:720");
+});
+
+test("fal adapter submits, polls, and normalizes a video output", async () => {
+  const calls: Array<{ url: string; method: string }> = [];
+  const client = createFalClient("fal-secret-value-long-enough", (async (url, init) => {
+    calls.push({ url: String(url), method: init?.method ?? "GET" });
+    assert.equal(new Headers(init?.headers).get("Authorization"), "Key fal-secret-value-long-enough");
+    if (String(url).endsWith("/status")) return Response.json({ status: "COMPLETED" });
+    if ((init?.method ?? "GET") === "POST") return Response.json({ request_id: "fal-request", cancel_url: "https://queue.fal.run/cancel" });
+    return Response.json({ video: { url: "https://cdn.example/result.mp4" } });
+  }) as typeof fetch);
+  const submitted = await client.submit("fal-ai/example", { prompt: "A clean product shot" });
+  assert.equal(submitted.request_id, "fal-request");
+  const status = await client.status("fal-ai/example", submitted.request_id);
+  assert.equal(status.state, "succeeded");
+  assert.equal(status.outputUrl, "https://cdn.example/result.mp4");
+  assert.equal(calls.length, 3);
+});
+
+test("production catalog exposes executable and catalog-only states", () => {
+  const model = getProductionModel("fal-kling-video");
+  assert.equal(model.provider, "fal");
+  assert.equal(estimateProductionCents(model, 5, 2), 140);
+  assert.equal(modelAvailability("kling-3-pro"), "connect_provider");
+  assert.equal(modelAvailability("soul-2"), "catalog_only");
 });
 test("analytics CSV parsing normalizes money and produces bounded creative scores", () => {
   const [row] = parseMetricsCsv([

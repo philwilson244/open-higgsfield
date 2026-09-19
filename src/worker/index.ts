@@ -7,6 +7,7 @@ import { renderMedia, selectComposition } from "@remotion/renderer";
 import { adminDatabase } from "../lib/supabase/admin";
 import { decryptSecret } from "../lib/secrets";
 import { createRunwayClient, RUNWAY_PROVIDER_ID } from "../generation/providers/runway";
+import { createFalClient, FAL_PROVIDER_ID } from "../generation/providers/fal";
 import type { AdTimelineProps } from "../render/AdTimeline";
 
 type GenerationJob = {
@@ -50,13 +51,18 @@ async function rescheduleGeneration(job: GenerationJob, error?: unknown) {
 
 async function processGeneration(job: GenerationJob) {
   try {
-    if (job.provider !== RUNWAY_PROVIDER_ID) throw new Error(`Unsupported provider: ${job.provider}`);
     const { data: account, error } = await db.from("ad_provider_accounts")
       .select("encrypted_key").eq("owner_id", job.owner_id).eq("provider", job.provider).single();
-    if (error || !account) throw new Error("Runway credentials are unavailable");
-    const client = createRunwayClient(decryptSecret(account.encrypted_key, `${job.owner_id}:${job.provider}`));
+    if (error || !account) throw new Error(`${job.provider} credentials are unavailable`);
+    const secret = decryptSecret(account.encrypted_key, `${job.owner_id}:${job.provider}`);
+    const providerModel = String(job.input.providerModel || job.model);
+    const runway = job.provider === RUNWAY_PROVIDER_ID ? createRunwayClient(secret) : null;
+    const fal = job.provider === FAL_PROVIDER_ID ? createFalClient(secret) : null;
+    if (!runway && !fal) throw new Error(`Unsupported provider: ${job.provider}`);
     if (job.cancel_requested_at) {
-      if (job.external_id) await client.cancel(job.external_id);
+      if (job.external_id && runway) await runway.cancel(job.external_id);
+      if (job.external_id && fal)
+        await fal.cancel(providerModel, job.external_id, typeof job.input.cancelUrl === "string" ? job.input.cancelUrl : undefined);
       const canceled = await db.rpc("finish_ad_generation_job", {
         p_job_id: job.id, p_status: "canceled", p_actual_cost_cents: 0, p_error: "Canceled by user",
       });
@@ -64,29 +70,72 @@ async function processGeneration(job: GenerationJob) {
       return;
     }
     if (!job.external_id) {
-      const submitted = await client.submitTextVideo({
-        model: job.model,
-        promptText: job.prompt,
-        ratio: job.input.ratio === "1280:720" ? "1280:720" : "720:1280",
-        duration: Number(job.input.duration),
-      });
+      let externalId: string;
+      let cancelUrl: string | undefined;
+      if (runway) {
+        const submitted = await runway.submitTextVideo({
+          model: providerModel,
+          promptText: job.prompt,
+          ratio: job.input.ratio === "1280:720" ? "1280:720" : "720:1280",
+          duration: Number(job.input.duration),
+        });
+        externalId = submitted.id;
+      } else {
+        const submitted = await fal!.submit(providerModel, {
+          prompt: job.prompt,
+          aspect_ratio: job.input.aspectRatio || "9:16",
+          duration: String(job.input.duration),
+          ...(typeof job.input.referenceImageUrl === "string"
+            ? { image_url: job.input.referenceImageUrl }
+            : {}),
+        });
+        externalId = submitted.request_id;
+        cancelUrl = submitted.cancel_url;
+      }
       await db.from("ad_generation_jobs").update({
-        external_id: submitted.id, status: "processing", lease_until: null,
+        external_id: externalId, status: "processing", lease_until: null,
+        input: {
+          ...job.input,
+          ...(cancelUrl ? { cancelUrl } : {}),
+        },
         next_attempt_at: new Date(Date.now() + 15_000).toISOString(), error: null,
       }).eq("id", job.id);
       return;
     }
-    const task = await client.task(job.external_id);
-    if (["PENDING", "THROTTLED", "RUNNING"].includes(task.status)) return rescheduleGeneration(job);
-    if (task.status !== "SUCCEEDED" || !task.output?.[0]) {
+    let pending = false;
+    let succeeded = false;
+    let canceled = false;
+    let generatedUrl: string | undefined;
+    let providerError: string | undefined;
+    let providerMetadata: Record<string, unknown> = {};
+    if (runway) {
+      const task = await runway.task(job.external_id);
+      pending = ["PENDING", "THROTTLED", "RUNNING"].includes(task.status);
+      succeeded = task.status === "SUCCEEDED";
+      canceled = task.status === "CANCELLED";
+      generatedUrl = task.output?.[0];
+      providerError = task.failure ?? `Runway task ${task.status.toLowerCase()}`;
+      providerMetadata = task.metadata ?? {};
+    } else {
+      const task = await fal!.status(providerModel, job.external_id);
+      pending = task.state === "pending";
+      succeeded = task.state === "succeeded";
+      generatedUrl = task.outputUrl;
+      providerError = task.error;
+      providerMetadata = task.raw as Record<string, unknown>;
+    }
+    if (pending) return rescheduleGeneration(job);
+    if (!succeeded || !generatedUrl) {
       await db.rpc("finish_ad_generation_job", {
-        p_job_id: job.id, p_status: task.status === "CANCELLED" ? "canceled" : "failed",
-        p_actual_cost_cents: 0, p_error: task.failure ?? `Runway task ${task.status.toLowerCase()}`,
+        p_job_id: job.id,
+        p_status: canceled ? "canceled" : "failed",
+        p_actual_cost_cents: 0,
+        p_error: providerError ?? `${job.provider} generation failed`,
       });
       return;
     }
-    const response = await fetch(task.output[0], { signal: AbortSignal.timeout(120_000), redirect: "error" });
-    if (!response.ok) throw new Error(`Could not copy Runway output (${response.status})`);
+    const response = await fetch(generatedUrl, { signal: AbortSignal.timeout(120_000), redirect: "error" });
+    if (!response.ok) throw new Error(`Could not copy provider output (${response.status})`);
     const body = await response.arrayBuffer();
     if (body.byteLength > 536_870_912) throw new Error("Runway output exceeded the 512 MB limit");
     const path = `${job.owner_id}/${job.campaign_id}/generations/${job.id}.mp4`;
@@ -95,7 +144,11 @@ async function processGeneration(job: GenerationJob) {
     const { data: output, error: outputError } = await db.from("ad_generation_outputs").upsert({
       owner_id: job.owner_id, campaign_id: job.campaign_id, shot_id: job.shot_id, job_id: job.id,
       storage_bucket: "ad-production", storage_path: path, mime_type: "video/mp4",
-      metadata: { runwayTaskId: job.external_id, runway: task.metadata ?? {} },
+      metadata: {
+        provider: job.provider,
+        providerTaskId: job.external_id,
+        providerMetadata,
+      },
     }, { onConflict: "job_id,storage_path" }).select("id").single();
     if (outputError) throw outputError;
     const asset = await db.from("ad_assets").upsert({

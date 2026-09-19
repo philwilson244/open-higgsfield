@@ -18,8 +18,8 @@ commercial launch.
   provider accounts, media, renders, metrics, quotas, and audit events.
 - Server-side encrypted provider credentials. Provider keys are never stored in
   cookies or returned to the browser.
-- Runway shot generation, candidate selection, cancellation, campaign budgets,
-  and approval gates.
+- Runway and fal.ai shot generation through a shared provider registry, candidate
+  selection, cancellation, campaign budgets, and approval gates.
 - A Railway worker for polling, retries, cancellation, expired-upload cleanup,
   and Remotion MP4 rendering.
 - Campaign-linked media history, CSV analytics import, and creative scoring.
@@ -72,6 +72,11 @@ pnpm test:e2e
 Production browser tests require `E2E_BASE_URL`, `E2E_USER_EMAIL`, and
 `E2E_USER_PASSWORD`. Paid generation is opt-in through
 `E2E_RUN_PAID_GENERATION=1`.
+
+Runway and fal.ai keys are entered in the authenticated Ad Studio provider
+panel. They are encrypted server-side; they are not Railway environment
+variables and are never returned to the browser. Model labels distinguish
+executable integrations from catalog-only entries.
 
 See [Ad Studio setup](docs/AD_STUDIO_SETUP.md) for deployment configuration and
 [the build plan](docs/AD_STUDIO_PLAN.md) for implemented and remaining work.

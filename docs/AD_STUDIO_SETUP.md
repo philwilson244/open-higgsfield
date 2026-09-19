@@ -37,7 +37,7 @@ Deploy two services from the same repository:
 1. Web service using `Dockerfile` and its HTTP health check.
 2. Background worker using `Dockerfile.worker` and `/health`.
 
-The worker claims durable jobs, polls providers, handles cancellation and retries,
+The worker claims durable jobs, polls Runway and fal.ai, handles cancellation and retries,
 renders Remotion MP4s, records actual costs, and periodically deletes expired
 public uploads. If the worker is stopped, jobs remain durable but generation,
 rendering, cancellation, and retention cleanup do not progress.
@@ -45,6 +45,8 @@ rendering, cancellation, and retention cleanup do not progress.
 ## Security and data handling
 
 - Provider keys are AES-256-GCM encrypted at rest and never stored in cookies.
+- Runway and fal.ai keys are saved per authenticated account from the Ad Studio
+  provider panel; they are not Railway environment variables.
 - Old `api_key` cookies are deleted and are not imported into a user account.
 - Uploads are account-prefixed, randomly named, limited to 100 MB, and tracked
   with a default 30-day expiry. They use public URLs only while a provider needs

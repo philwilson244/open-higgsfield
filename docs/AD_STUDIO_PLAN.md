@@ -33,11 +33,14 @@ flowchart TD
   automatic expiry cleanup.
 - Campaign save, duplicate, approve, archive, and optimistic revision checks.
 
-### Generation and media — complete for Runway
+### Generation and media — complete for Runway and initial fal.ai models
 
 - Persistent shot and generation-job records.
-- Runway adapter, normalized status/error handling, retries, polling, idempotency,
-  stored upstream cancellation URLs, and user-requested cancellation.
+- Shared production-provider registry with Runway and fal.ai adapters, normalized
+  status/error handling, retries, polling, idempotency, stored upstream
+  cancellation URLs, and user-requested cancellation.
+- Truthful model states distinguish live/connected integrations from catalog-only
+  entries. Initial fal.ai routes cover Kling, MiniMax Hailuo, and Wan video.
 - Generate-shot controls in Ad Studio, candidate selection, and campaign-linked
   media history.
 - Campaign cost estimates, reservations, actual cost capture, budget ceilings,
@@ -63,7 +66,7 @@ flowchart TD
 
 ### Multi-provider depth
 
-- Add direct adapters after confirming API access, commercial terms, model
+- Add Veo and other direct adapters after confirming API access, commercial terms, model
   licenses, output rights, and cancellation semantics.
 - Add provider webhooks, a live health collector, and automatically refreshed
   price and capability catalogs.
