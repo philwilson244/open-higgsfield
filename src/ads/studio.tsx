@@ -531,8 +531,8 @@ export function AdStudio({
               <section className="ads-card ads-stack">
                 <h2>Generation provider</h2>
                 <p>
-                  Runway powers campaign shot jobs. The legacy platform adapter
-                  remains available in the generation workbench.
+                  Runway and fal.ai power durable campaign shot jobs. Model
+                  choices show their provider before any paid generation starts.
                 </p>
                 <RunwayCredentials notice={setNotice} />
                 <hr />
