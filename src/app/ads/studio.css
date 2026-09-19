@@ -431,6 +431,13 @@
   margin-top: 18px;
   padding-top: 18px;
 }
+
+.ads-production-options {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+  margin: 12px 0;
+}
 .ads-production-shot .ads-card-heading > div {
   display: flex;
   flex-direction: column;
