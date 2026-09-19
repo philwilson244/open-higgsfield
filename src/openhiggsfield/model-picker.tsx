@@ -5,6 +5,7 @@ import type { CSSProperties } from "react";
 
 import { MODELS } from "@/generation/catalog";
 import type { ModelEntry, Surface } from "@/generation/catalog";
+import { modelAvailability } from "@/generation/providers/registry";
 
 import { swatchFor } from "./artwork";
 import { SURFACE_LABELS, describeModel } from "./data";
@@ -110,6 +111,7 @@ export function ModelPicker({
 
         {models.map((model) => {
           const selected = model.id === selectedId;
+          const availability = modelAvailability(model.id);
           return (
             <button
               key={model.id}
@@ -131,7 +133,9 @@ export function ModelPicker({
                 </span>
               )}
               <span className="ohf-model-row-text">
-                <span className="ohf-model-row-name">{model.label}</span>
+                <span className="ohf-model-row-name">
+                  {model.label} · {availability === "catalog_only" ? "Catalog" : "Connect provider"}
+                </span>
                 <span className="ohf-model-row-desc">{describeModel(model)}</span>
               </span>
               <span className="ohf-model-row-check" aria-hidden>
