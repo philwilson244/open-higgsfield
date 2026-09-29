@@ -21,6 +21,7 @@ import { createFalClient } from "../src/generation/providers/fal";
 import { estimateProductionCents, getProductionModel, modelAvailability } from "../src/generation/providers/registry";
 import { parseMetricsCsv } from "../src/ads/analytics";
 import { COMPANY_TEMPLATES } from "../src/ads/company-templates";
+import { applyBrandKit, kitFromBrief } from "../src/ads/brand-kit";
 import { MODELS } from "../src/generation/catalog";
 import { parseEmailOtpType, safeAuthDestination } from "../src/lib/auth/confirmation";
 import type { ModelEntry } from "../src/generation/catalog/types";
@@ -297,7 +298,6 @@ test("company templates are complete valid brand kits", () => {
   assert.deepEqual(COMPANY_TEMPLATES.map((item) => item.label), ["Fullcourt", "Pocket OS.AI", "PWS"]);
   for (const template of COMPANY_TEMPLATES) assert.ok(brandSchema.safeParse(template.kit).success);
 });
-
 test("email confirmation accepts Supabase OTP types and blocks open redirects", () => {
   assert.equal(parseEmailOtpType("email"), "email");
   assert.equal(parseEmailOtpType("signup"), "signup");
@@ -305,4 +305,19 @@ test("email confirmation accepts Supabase OTP types and blocks open redirects", 
   assert.equal(safeAuthDestination("/ads"), "/ads");
   assert.equal(safeAuthDestination("//evil.example"), "/ads");
   assert.equal(safeAuthDestination("https://evil.example"), "/ads");
+});
+test("applying a brand kit preserves campaign specifics and snapshots production rules", () => {
+  const kit = COMPANY_TEMPLATES[0]!.kit;
+  const campaignBrief = { ...brief, problem: "A real customer problem", callToAction: "Custom CTA" };
+  const applied = applyBrandKit(campaignBrief, kit);
+  assert.equal(applied.problem, "A real customer problem");
+  assert.equal(applied.callToAction, "Custom CTA");
+  assert.equal(applied.brandName, kit.name);
+  assert.equal(applyBrandKit({ ...brief, callToAction: "" }, kit).callToAction, kit.ctaLibrary[0]);
+  const savedId = "59cfaf0e-931e-44cc-a813-8de4bdd35ad4";
+  const plan = createAdPlan(applied, new Date("2026-09-29T12:00:00Z"), { id: savedId, kit });
+  assert.equal(planSchema.parse(plan).brandId, savedId);
+  assert.deepEqual(plan.brandKit, kit);
+  assert.ok(shotPrompt(plan.brief, plan.variants[0]!.beats[0]!, plan.brandKit).includes(kit.referenceNotes!));
+  assert.equal(kitFromBrief(applied, kit.color).ctaLibrary[0], "Custom CTA");
 });

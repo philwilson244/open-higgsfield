@@ -75,6 +75,8 @@ export type AdVariantPlan = {
 
 export type AdPlan = {
   brief: AdBrief;
+  brandId?: string;
+  brandKit?: import("./schema").BrandKit;
   createdAt: string;
   variants: AdVariantPlan[];
 };

@@ -14,6 +14,9 @@ commercial launch.
 
 - A 38-model image/video catalog and normalized provider interface.
 - An Ad Studio at `/ads` with Fullcourt, Pocket, and PWS brand templates.
+- Saved brand kits with JSON import/export, copy and voice rules, private logos
+  and reference images, and campaign snapshots. Compatible fal.ai shot models
+  can use a saved brand image as a generation reference.
 - Supabase authentication, owner-scoped campaigns, shots, generation jobs,
   provider accounts, media, renders, metrics, quotas, and audit events.
 - Server-side encrypted provider credentials. Provider keys are never stored in
@@ -77,6 +80,13 @@ Runway and fal.ai keys are entered in the authenticated Ad Studio provider
 panel. They are encrypted server-side; they are not Railway environment
 variables and are never returned to the browser. Model labels distinguish
 executable integrations from catalog-only entries.
+
+In Ad Studio, open **Brand kits** to customize a starter kit or import a kit
+JSON file, then save it. Upload logos and references after the kit is saved.
+Choose the kit in the campaign brief to apply its identity and copy rules.
+Existing campaigns retain the kit snapshot they were built with; rebuild
+concepts to apply brand changes. Uploaded logos and fonts are not automatically
+composited into final renders.
 
 See [Ad Studio setup](docs/AD_STUDIO_SETUP.md) for deployment configuration and
 [the build plan](docs/AD_STUDIO_PLAN.md) for implemented and remaining work.

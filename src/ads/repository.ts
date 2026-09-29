@@ -3,7 +3,7 @@ import { requireAccount } from "@/lib/supabase/server";
 import { brandSchema, planSchema, type BrandKit } from "./schema";
 import type { AdPlan } from "./types";
 
-export type SavedBrand = { id: string; kit: BrandKit };
+export type SavedBrand = { id: string; revision: number; updated_at: string; kit: BrandKit };
 export type Campaign = {
   id: string;
   name: string;
@@ -21,7 +21,7 @@ export async function loadWorkspace() {
   const [brands, campaigns] = await Promise.all([
     db
       .from("ad_brands")
-      .select("id, kit")
+      .select("id, revision, updated_at, kit")
       .eq("owner_id", user.id)
       .order("updated_at", { ascending: false })
       .limit(100),
@@ -39,6 +39,8 @@ export async function loadWorkspace() {
   return {
     brands: (brands.data ?? []).map((b) => ({
       id: b.id as string,
+      revision: b.revision as number,
+      updated_at: b.updated_at as string,
       kit: brandSchema.parse(b.kit),
     })),
     campaigns: (campaigns.data ?? []).map((c) => ({

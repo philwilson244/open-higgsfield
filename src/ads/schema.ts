@@ -97,6 +97,8 @@ const variantSchema = z
 export const planSchema = z
   .object({
     brief: briefSchema,
+    brandId: z.uuid().optional(),
+    brandKit: brandSchema.optional(),
     createdAt: z.iso.datetime(),
     variants: z.array(variantSchema).min(1).max(15),
   })

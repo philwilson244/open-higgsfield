@@ -1,5 +1,6 @@
 import { getAdTarget } from "./platforms";
 import type { AdBeat, AdBeatKind, AdBrief, AdPlan, AdTarget, AdVariantPlan } from "./types";
+import type { BrandKit } from "./schema";
 
 type HookAngle = {
   id: string;
@@ -37,9 +38,10 @@ const HOOK_ANGLES: readonly HookAngle[] = [
   },
 ];
 
-export function createAdPlan(brief: AdBrief, now = new Date()): AdPlan {
+export function createAdPlan(brief: AdBrief, now = new Date(), brand?: { id?: string; kit: BrandKit }): AdPlan {
   return {
     brief,
+    ...(brand ? { brandKit: brand.kit, ...(brand.id ? { brandId: brand.id } : {}) } : {}),
     createdAt: now.toISOString(),
     variants: brief.channels.flatMap((channel) => {
       const target = getAdTarget(channel);
