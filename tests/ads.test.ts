@@ -22,6 +22,7 @@ import { estimateProductionCents, getProductionModel, modelAvailability } from "
 import { parseMetricsCsv } from "../src/ads/analytics";
 import { COMPANY_TEMPLATES } from "../src/ads/company-templates";
 import { MODELS } from "../src/generation/catalog";
+import { parseEmailOtpType, safeAuthDestination } from "../src/lib/auth/confirmation";
 import type { ModelEntry } from "../src/generation/catalog/types";
 
 const brief = briefSchema.parse({
@@ -295,4 +296,13 @@ test("analytics CSV parsing normalizes money and produces bounded creative score
 test("company templates are complete valid brand kits", () => {
   assert.deepEqual(COMPANY_TEMPLATES.map((item) => item.label), ["Fullcourt", "Pocket OS.AI", "PWS"]);
   for (const template of COMPANY_TEMPLATES) assert.ok(brandSchema.safeParse(template.kit).success);
+});
+
+test("email confirmation accepts Supabase OTP types and blocks open redirects", () => {
+  assert.equal(parseEmailOtpType("email"), "email");
+  assert.equal(parseEmailOtpType("signup"), "signup");
+  assert.equal(parseEmailOtpType("not-a-real-type"), null);
+  assert.equal(safeAuthDestination("/ads"), "/ads");
+  assert.equal(safeAuthDestination("//evil.example"), "/ads");
+  assert.equal(safeAuthDestination("https://evil.example"), "/ads");
 });
