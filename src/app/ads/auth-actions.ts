@@ -37,7 +37,7 @@ export async function authenticate(
     const { data, error } = await db.auth.signUp({
       email,
       password,
-      options: { emailRedirectTo: new URL("/auth/callback", site).toString() },
+      options: { emailRedirectTo: new URL("/auth/confirm", site).toString() },
     });
     if (error)
       return {
