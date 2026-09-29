@@ -27,8 +27,11 @@ the encryption key securely; replacing it makes saved provider credentials
 unreadable until users re-enter them.
 
 Configure the Railway origin as the Supabase Auth Site URL and allow
-`APP_URL/auth/callback`. Keep email confirmation enabled and configure production
-email delivery.
+`APP_URL/auth/confirm` and `APP_URL/auth/callback` as exact redirect URLs. Keep
+email confirmation enabled and configure production email delivery. The hosted
+Supabase **Confirm signup** template must use the checked-in
+`supabase/templates/confirmation.html` body so confirmation uses `TokenHash` and
+works even when the email is opened on a different device from the signup.
 
 ## Railway services
 
