@@ -31,6 +31,7 @@ const enqueueSchema = z.object({
   candidates: z.number().int().min(1).max(4).default(2),
   modelId: z.string().min(1).max(100).default("runway-gen4.5"),
   referenceImageUrl: z.url().max(4000).optional(),
+  referenceAssetId: z.uuid().optional(),
 });
 
 export async function saveProviderCredentials(provider: string, secret: string): Promise<ActionResult> {
@@ -89,7 +90,7 @@ export async function enqueueShotCandidates(input: unknown): Promise<ActionResul
   try {
     const value = enqueueSchema.parse(input);
     const productionModel = getProductionModel(value.modelId);
-    if (value.referenceImageUrl && !productionModel.supportsReferenceImage)
+    if ((value.referenceImageUrl || value.referenceAssetId) && !productionModel.supportsReferenceImage)
       throw new Error(`${productionModel.label} does not accept a reference image`);
     const { db, user } = await requireAccount();
     const [{ data: campaign, error: campaignError }, { data: credential }] = await Promise.all([
@@ -104,6 +105,13 @@ export async function enqueueShotCandidates(input: unknown): Promise<ActionResul
     if (campaign.status !== "approved" || !campaign.production_approved_at)
       throw new Error("Approve the storyboard and production budget before generating");
     const plan = planSchema.parse(campaign.plan);
+    if (value.referenceAssetId) {
+      if (!plan.brandId) throw new Error("This campaign has no saved brand kit.");
+      const { data: reference } = await db.from("ad_assets").select("id")
+        .eq("id", value.referenceAssetId).eq("owner_id", user.id).eq("brand_id", plan.brandId)
+        .in("kind", ["logo", "reference", "screenshot"]).maybeSingle();
+      if (!reference) throw new Error("Brand reference image is unavailable. Choose another image.");
+    }
     const variant = plan.variants.find((item) => item.id === value.variantId);
     const beatIndex = variant?.beats.findIndex((item) => item.id === value.beatId) ?? -1;
     const beat = beatIndex >= 0 ? variant?.beats[beatIndex] : undefined;
@@ -112,7 +120,7 @@ export async function enqueueShotCandidates(input: unknown): Promise<ActionResul
     const totalEstimate = estimateProductionCents(productionModel, duration, value.candidates);
     if (campaign.spent_cents + campaign.reserved_cents + totalEstimate > campaign.budget_cents)
       throw new Error("These candidates exceed the remaining campaign budget");
-    const prompt = shotPrompt(plan.brief, beat);
+    const prompt = shotPrompt(plan.brief, beat, plan.brandKit);
     const estimateEach = estimateProductionCents(productionModel, duration, 1);
     const jobIds: string[] = [];
     for (let candidateIndex = 0; candidateIndex < value.candidates; candidateIndex += 1) {
@@ -132,6 +140,7 @@ export async function enqueueShotCandidates(input: unknown): Promise<ActionResul
           candidateIndex,
           providerModel: productionModel.providerModel,
           ...(value.referenceImageUrl ? { referenceImageUrl: value.referenceImageUrl } : {}),
+          ...(value.referenceAssetId ? { referenceAssetId: value.referenceAssetId } : {}),
         },
         p_estimated_cost_cents: estimateEach,
       });

@@ -1,11 +1,16 @@
 import type { AdBeat, AdBrief, AdVariantPlan } from "./types";
+import type { BrandKit } from "./schema";
 
-export function shotPrompt(brief: AdBrief, beat: AdBeat): string {
+export function shotPrompt(brief: AdBrief, beat: AdBeat, kit?: BrandKit): string {
   return [
     `Brand: ${brief.brandName}. Product: ${brief.productName}.`,
     `Audience: ${brief.audience}.`,
     beat.visualDirection,
     brief.tone?.length ? `Tone: ${brief.tone.join(", ")}.` : "",
+    kit?.referenceNotes ? `Brand visual rules: ${kit.referenceNotes}` : "",
+    kit?.color ? `Brand accent for post-production: ${kit.color}.` : "",
+    kit?.voiceDirection ? `Voice direction: ${kit.voiceDirection}` : "",
+    kit?.musicDirection ? `Music direction: ${kit.musicDirection}` : "",
     brief.prohibitedClaims?.length
       ? `Do not claim or depict: ${brief.prohibitedClaims.join("; ")}.`
       : "",

@@ -13,6 +13,7 @@ import { PRODUCTION_MODELS } from "@/generation/providers/registry";
 import type { Campaign } from "./repository";
 import type { AdVariantPlan } from "./types";
 import type { ProductionState } from "./production-types";
+import type { BrandAsset } from "./brand-assets";
 
 type CommonProps = {
   campaign: Campaign;
@@ -79,10 +80,12 @@ export function ShotProductionControls({
   notice,
   variantId,
   beatId,
-}: CommonProps & { variantId: string; beatId: string }) {
+  brandAssets,
+}: CommonProps & { variantId: string; beatId: string; brandAssets: BrandAsset[] }) {
   const [busy, setBusy] = useState(false);
   const [modelId, setModelId] = useState(PRODUCTION_MODELS[0].id);
   const [referenceImageUrl, setReferenceImageUrl] = useState("");
+  const [referenceAssetId, setReferenceAssetId] = useState("");
   const selectedModel = PRODUCTION_MODELS.find((model) => model.id === modelId) ?? PRODUCTION_MODELS[0];
   const jobs = state?.jobs.filter((job) => job.beat_id === beatId) ?? [];
   const jobIds = new Set(jobs.map((job) => job.id));
@@ -108,7 +111,7 @@ export function ShotProductionControls({
               beatId,
               candidates: 2,
               modelId,
-              ...(referenceImageUrl ? { referenceImageUrl } : {}),
+              ...(referenceAssetId ? { referenceAssetId } : referenceImageUrl ? { referenceImageUrl } : {}),
             })
               .then(async (result) => {
                 if (result.error) notice(result.error);
@@ -133,15 +136,20 @@ export function ShotProductionControls({
           </select>
         </label>
         {selectedModel.supportsReferenceImage && (
-          <label>
-            Approved reference image URL
-            <input
-              type="url"
-              value={referenceImageUrl}
-              onChange={(event) => setReferenceImageUrl(event.target.value)}
-              placeholder="https://…"
-            />
-          </label>
+          <>
+            {brandAssets.length > 0 && <label>
+              Brand kit reference image
+              <select value={referenceAssetId} onChange={(event) => setReferenceAssetId(event.target.value)}>
+                <option value="">No saved image</option>
+                {brandAssets.map((asset) => <option value={asset.id} key={asset.id}>{asset.kind} · {asset.filename}</option>)}
+              </select>
+            </label>}
+            {!referenceAssetId && <label>
+              Or approved reference image URL
+              <input type="url" value={referenceImageUrl}
+                onChange={(event) => setReferenceImageUrl(event.target.value)} placeholder="https://…" />
+            </label>}
+          </>
         )}
       </div>
       {!approved && <p className="ads-muted">Approve the storyboard and budget to enable paid generation.</p>}

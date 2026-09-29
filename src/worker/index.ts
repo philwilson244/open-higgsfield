@@ -81,13 +81,22 @@ async function processGeneration(job: GenerationJob) {
         });
         externalId = submitted.id;
       } else {
+        let referenceImageUrl = typeof job.input.referenceImageUrl === "string" ? job.input.referenceImageUrl : undefined;
+        if (typeof job.input.referenceAssetId === "string") {
+          const { data: asset, error: assetError } = await db.from("ad_assets")
+            .select("storage_bucket, storage_path").eq("id", job.input.referenceAssetId)
+            .eq("owner_id", job.owner_id).single();
+          if (assetError || !asset) throw new Error("Brand reference image is unavailable");
+          const { data: signed, error: signError } = await db.storage.from(asset.storage_bucket)
+            .createSignedUrl(asset.storage_path, 3600);
+          if (signError || !signed?.signedUrl) throw new Error("Could not sign the brand reference image");
+          referenceImageUrl = signed.signedUrl;
+        }
         const submitted = await fal!.submit(providerModel, {
           prompt: job.prompt,
           aspect_ratio: job.input.aspectRatio || "9:16",
           duration: String(job.input.duration),
-          ...(typeof job.input.referenceImageUrl === "string"
-            ? { image_url: job.input.referenceImageUrl }
-            : {}),
+          ...(referenceImageUrl ? { image_url: referenceImageUrl } : {}),
         });
         externalId = submitted.request_id;
         cancelUrl = submitted.cancel_url;
